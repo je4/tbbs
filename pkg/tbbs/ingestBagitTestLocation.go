@@ -41,6 +41,10 @@ func (ibl *IngestBagitTestLocation) Store() error {
 	return ibl.ingest.bagitTestLocationStore(ibl)
 }
 
+func (ibl *IngestBagitTestLocation) Last() error {
+	return ibl.ingest.bagitTestLocationLast(ibl)
+}
+
 func (ibl *IngestBagitTestLocation) checksumSFTP() ([]byte, error) {
 	shaSink := sha512.New()
 	urlstring := ibl.location.path.String()

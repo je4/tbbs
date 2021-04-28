@@ -67,6 +67,7 @@ type BagitConfig struct {
 	Logformat      string               `toml:"logformat"`
 	Checksum       []string             `toml:"checksum"`
 	Tempdir        string               `toml:"tempdir"`
+	Reportdir      string               `toml:"reportdir"`
 	KeyDir         string               `toml:"keydir"`
 	DBFolder       string               `toml:"dbfolder"`
 	BaseDir        string               `toml:"basedir"`

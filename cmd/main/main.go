@@ -106,7 +106,7 @@ func main() {
 
 	switch *action {
 	case "ingest":
-		i, err := tbbs.NewIngest(conf.Tempdir, conf.KeyDir, conf.IngestLocation, db, conf.DB.Schema, conf.PrivateKey, logger)
+		i, err := tbbs.NewIngest(conf.Tempdir, conf.KeyDir, conf.IngestLocation, conf.Reportdir, db, conf.DB.Schema, conf.PrivateKey, logger)
 		if err != nil {
 			logger.Fatalf("cannot create BagitIngest: %v", err)
 			return
@@ -121,6 +121,10 @@ func main() {
 		}
 		if err := i.Check(); err != nil {
 			logger.Fatalf("cannot ingest: %v", err)
+			return
+		}
+		if err := i.Report(); err != nil {
+			logger.Fatalf("cannot create report: %v", err)
 			return
 		}
 	default:

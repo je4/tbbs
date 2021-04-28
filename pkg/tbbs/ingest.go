@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"github.com/dgraph-io/badger"
@@ -17,8 +18,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"text/template"
 	"time"
 )
+
+// Embed the entire directory.
+//go:embed templates
+var templates embed.FS
 
 const encExt = "aes256"
 
@@ -26,6 +32,7 @@ type Ingest struct {
 	tempDir     string
 	logger      *logging.Logger
 	keyDir      string
+	reportDir   string
 	db          *sql.DB
 	schema      string
 	initLocName string
@@ -35,7 +42,7 @@ type Ingest struct {
 	sftp        *SFTP
 }
 
-func NewIngest(tempDir, keyDir, initLocName string, db *sql.DB, dbschema string, privateKeys []string, logger *logging.Logger) (*Ingest, error) {
+func NewIngest(tempDir, keyDir, initLocName, reportDir string, db *sql.DB, dbschema string, privateKeys []string, logger *logging.Logger) (*Ingest, error) {
 	sftp, err := NewSFTP(privateKeys, "", "", logger)
 	if err != nil {
 		return nil, emperror.Wrap(err, "cannot create sftp")
@@ -45,6 +52,7 @@ func NewIngest(tempDir, keyDir, initLocName string, db *sql.DB, dbschema string,
 		tempDir:     tempDir,
 		logger:      logger,
 		keyDir:      keyDir,
+		reportDir:   reportDir,
 		schema:      dbschema,
 		initLocName: initLocName,
 		sftp:        sftp,
@@ -108,7 +116,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 		return emperror.Wrapf(err, "cannot get number of rows - %s", sqlstr)
 	}
 
-	sqlstr = fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, creator, report FROM %s.bagit LIMIT ?,?", i.schema)
+	sqlstr = fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, creator, report, creationdate FROM %s.bagit LIMIT ?,?", i.schema)
 
 	var start int64
 	for start = 0; start < numRows; start += pageSize {
@@ -122,7 +130,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 				ingest: i,
 			}
 			var sha512_aes, report sql.NullString
-			if err := rows.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.creator, &report); err != nil {
+			if err := rows.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.creator, &report, &bagit.creationdate); err != nil {
 				rows.Close()
 				if err == sql.ErrNoRows {
 					return nil
@@ -347,6 +355,15 @@ func (i *Ingest) bagitTestLocationNeeded(ibl *IngestBagitTestLocation) (bool, er
 		return false, emperror.Wrapf(err, "cannot check for test interval - %s", sqlstr)
 	}
 	return num == 0, nil
+}
+
+func (i *Ingest) bagitTestLocationLast(ibl *IngestBagitTestLocation) error {
+	sqlstr := fmt.Sprintf("SELECT status, start, end, message FROM %s.bagit_test_location WHERE bagitid=? AND testid=? AND locationid=? ORDER BY bagit_location_testid DESC", i.schema)
+	row := i.db.QueryRow(sqlstr, ibl.bagit.id, ibl.test.id, ibl.location.id)
+	if err := row.Scan(&ibl.status, &ibl.start, &ibl.end, &ibl.message); err != nil {
+		return emperror.Wrapf(err, "cannot check for test interval - %s", sqlstr)
+	}
+	return nil
 }
 
 func (i *Ingest) bagitLoad(name string) (*IngestBagit, error) {
@@ -604,6 +621,74 @@ func (i *Ingest) Check() error {
 	}); err != nil {
 		return emperror.Wrap(err, "error iterating bagits")
 	}
+	return nil
+}
+
+type TplBagitEntryTest struct {
+	Location string
+	Date     time.Time
+	Status   string
+}
+type TplBagitEntry struct {
+	Name     string
+	Size     int64
+	Ingested time.Time
+	Tests    []TplBagitEntryTest
+}
+
+func (i *Ingest) Report() error {
+	daTest, ok := i.tests["checksum"]
+	if !ok {
+		return fmt.Errorf("cannot find test checksum")
+	}
+
+	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
+	}
+	index, err := template.New("index").Parse(string(indexTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+	}
+	bagits := []*TplBagitEntry{}
+	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
+		b := &TplBagitEntry{
+			Name:     bagit.name,
+			Size:     bagit.size,
+			Ingested: bagit.creationdate,
+			Tests:    []TplBagitEntryTest{},
+		}
+		for _, loc := range i.locations {
+			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
+			if err != nil {
+				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
+			}
+			if err := t.Last(); err != nil {
+				i.logger.Errorf("cannot check %s at %s: %v", bagit.name, loc.name, err)
+				break
+				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
+			}
+			b.Tests = append(b.Tests, TplBagitEntryTest{
+				Location: loc.name,
+				Date:     t.end,
+				Status:   t.status,
+			})
+		}
+		bagits = append(bagits, b)
+		return nil
+	}); err != nil {
+		return emperror.Wrap(err, "error iterating bagits")
+	}
+
+	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
+	}
+	defer ifp.Close()
+	if err := index.Execute(ifp, bagits); err != nil {
+		return emperror.Wrapf(err, "cannot execute index template")
+	}
+
 	return nil
 }
 
