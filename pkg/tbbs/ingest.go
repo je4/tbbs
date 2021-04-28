@@ -585,6 +585,28 @@ func (i *Ingest) Ingest() error {
 	return nil
 }
 
+func (i *Ingest) Check() error {
+	daTest, ok := i.tests["checksum"]
+	if !ok {
+		return fmt.Errorf("cannot find test checksum")
+	}
+	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
+		for _, loc := range i.locations {
+			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
+			if err != nil {
+				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
+			}
+			if err := t.Test(); err != nil {
+				return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
+			}
+		}
+		return nil
+	}); err != nil {
+		return emperror.Wrap(err, "error iterating bagits")
+	}
+	return nil
+}
+
 func (i *Ingest) DELETE_Encrypt(name, bagitPath string) error {
 	if _, err := os.Stat(bagitPath + "." + encExt); err == nil {
 		return fmt.Errorf("encrypted bagit file %s.%s already exists", name, encExt)
@@ -628,4 +650,9 @@ func (i *Ingest) DELETE_Encrypt(name, bagitPath string) error {
 		}
 	*/
 	return nil
+}
+
+func (i *Ingest) IngestBagitTestLocationNew(ingestBagit *IngestBagit, loc *IngestLocation, test *IngestTest) (*IngestBagitTestLocation, error) {
+	t := &IngestBagitTestLocation{ingest: i, bagit: ingestBagit, location: loc, test: test}
+	return t, nil
 }

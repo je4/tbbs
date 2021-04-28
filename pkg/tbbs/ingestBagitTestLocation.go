@@ -133,6 +133,6 @@ func (ibl *IngestBagitTestLocation) Test() error {
 	if err := ibl.Store(); err != nil {
 		return emperror.Wrapf(err, "cannot store test for %s at %s", ibl.bagit.name, ibl.location.name)
 	}
-	ibl.ingest.logger.Infof("checksum for %s at %s passed", ibl.bagit.name, ibl.location.name)
+	ibl.ingest.logger.Infof("checksum for %s at %s %s", ibl.bagit.name, ibl.location.name, ibl.status)
 	return nil
 }

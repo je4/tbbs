@@ -119,6 +119,10 @@ func main() {
 			logger.Fatalf("cannot ingest: %v", err)
 			return
 		}
+		if err := i.Check(); err != nil {
+			logger.Fatalf("cannot ingest: %v", err)
+			return
+		}
 	default:
 		logger.Errorf("invalid action: %s", *action)
 	}
