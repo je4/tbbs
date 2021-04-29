@@ -8,7 +8,7 @@ Logformat = "%{time:2006-01-02T15:04:05.000} %{module}::%{shortfunc} [%{shortfil
 Tempdir = "c:/temp/bagit"
 Basedir = "c:/temp/bagit"
 Keydir = "c:/temp/bagit/keys"
-Reportdir = "c:/temp/bagit/report"
+Reportdir = "c:/daten/go/dev/tbbs/report/source"
 DBFolder = "c:/temp/bagit/badger"
 
 # remove temporary files after bagit creation
@@ -16,15 +16,6 @@ Cleanup = false
 
 # checksums which need to be created for bagit
 Checksum  = ["md5", "sha512"]
-
-# url to call indexer service [[PATH]] will be replaced with filename
-#Indexer = "http://localhost:81"
-
-# rename filenames with characters which should be avoided
-FixFilenames = true
-
-# list of pronom id's which should be stored without compression
-Nocompress = ["fmt/17", "fmt/353"]  # pdf, tiff
 
 #ingest only stuff
 ingestloc = "temp"

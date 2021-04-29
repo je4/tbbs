@@ -166,7 +166,7 @@ func (i *Ingest) testLoad(name string) (*IngestTest, error) {
 }
 
 func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
-	sqlstr := fmt.Sprintf("SELECT locationid, name, path, params, encrypted, quality, costs FROM %s.location", i.schema)
+	sqlstr := fmt.Sprintf("SELECT locationid, name, path, params, encrypted, quality, costs, testinterval FROM %s.location", i.schema)
 
 	var locations = make(map[string]*IngestLocation)
 
@@ -180,8 +180,8 @@ func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
 	defer rows.Close()
 	for rows.Next() {
 		loc := &IngestLocation{}
-		var p string
-		if err := rows.Scan(&loc.id, &loc.name, &p, &loc.params, &loc.encrypted, &loc.quality, &loc.costs); err != nil {
+		var p, testIntervalStr string
+		if err := rows.Scan(&loc.id, &loc.name, &p, &loc.params, &loc.encrypted, &loc.quality, &loc.costs, &testIntervalStr); err != nil {
 			if err == sql.ErrNoRows {
 				return nil, nil
 			}
@@ -190,6 +190,10 @@ func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
 		loc.path, err = url.Parse(p)
 		if err != nil {
 			return nil, emperror.Wrapf(err, "cannot parse url %s", p)
+		}
+		loc.checkInterval, err = time.ParseDuration(testIntervalStr)
+		if err != nil {
+			return nil, emperror.Wrapf(err, "cannot parse interval %s of location %s", testIntervalStr, loc.name)
 		}
 		locations[loc.name] = loc
 	}
@@ -348,8 +352,9 @@ func (i *Ingest) bagitTestLocationStore(ibl *IngestBagitTestLocation) error {
 }
 
 func (i *Ingest) bagitTestLocationNeeded(ibl *IngestBagitTestLocation) (bool, error) {
-	sqlstr := fmt.Sprintf("SELECT COUNT(*) FROM %s.bagit_test_location WHERE status=? AND bagitid=? AND testid=? AND locationid=? AND start > NOW()-?", i.schema)
-	row := i.db.QueryRow(sqlstr, "passed", ibl.bagit.id, ibl.test.id, ibl.location.id, ibl.location.checkInterval/time.Second)
+	checkDate := time.Now().Local().Add(-ibl.location.checkInterval)
+	sqlstr := fmt.Sprintf("SELECT COUNT(*) FROM %s.bagit_test_location WHERE status=? AND bagitid=? AND testid=? AND locationid=? AND start > ?", i.schema)
+	row := i.db.QueryRow(sqlstr, "passed", ibl.bagit.id, ibl.test.id, ibl.location.id, checkDate)
 	var num int64
 	if err := row.Scan(&num); err != nil {
 		return false, emperror.Wrapf(err, "cannot check for test interval - %s", sqlstr)
@@ -630,10 +635,10 @@ type TplBagitEntryTest struct {
 	Status   string
 }
 type TplBagitEntry struct {
-	Name     string
-	Size     int64
-	Ingested time.Time
-	Tests    []TplBagitEntryTest
+	Name         string
+	Size         int64
+	Ingested     string
+	TestsMessage string
 }
 
 func (i *Ingest) Report() error {
@@ -642,22 +647,39 @@ func (i *Ingest) Report() error {
 		return fmt.Errorf("cannot find test checksum")
 	}
 
+	funcMap := template.FuncMap{
+		"now": time.Now,
+		"replace": func(input, from, to string) string {
+			i.logger.Debugf("replace %s - %s -> %s", input, from, to)
+			return strings.Replace(input, from, to, -1)
+		},
+	}
 	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
 	}
-	index, err := template.New("index").Parse(string(indexTplStr))
+	index, err := template.New("index").Funcs(funcMap).Parse(string(indexTplStr))
 	if err != nil {
 		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
 	}
+	/*
+		bagitTplStr, err := templates.ReadFile("templates/bagut.rst.tpl")
+		if err != nil {
+			return emperror.Wrapf(err, "cannot open template bagit.rst.tpl")
+		}
+		bagitTpl, err := template.New("index").Funcs(funcMap).Parse(string(bagitTplStr))
+		if err != nil {
+			return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+		}
+	*/
 	bagits := []*TplBagitEntry{}
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		b := &TplBagitEntry{
 			Name:     bagit.name,
 			Size:     bagit.size,
-			Ingested: bagit.creationdate,
-			Tests:    []TplBagitEntryTest{},
+			Ingested: bagit.creationdate.Format("2006-01-02"),
 		}
+		var testPassed, testFailed int64
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
@@ -668,12 +690,16 @@ func (i *Ingest) Report() error {
 				break
 				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
 			}
-			b.Tests = append(b.Tests, TplBagitEntryTest{
-				Location: loc.name,
-				Date:     t.end,
-				Status:   t.status,
-			})
+			switch t.status {
+			case "passed":
+				testPassed++
+			case "failed":
+				testFailed++
+			default:
+				return fmt.Errorf("invalid test status %s for test #%v", t.status, t.id)
+			}
 		}
+		b.TestsMessage = fmt.Sprintf("%v/%v tests passed", testPassed, testFailed+testPassed)
 		bagits = append(bagits, b)
 		return nil
 	}); err != nil {

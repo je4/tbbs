@@ -1,18 +1,11 @@
-TBBS Test Report
-================
+{{.Name}}
+=========
 
 .. toctree::
    :maxdepth: 2
-   :numbered:
-   :titlesonly:
-   :glob:
-   :hidden:
+   :caption: Contents:
 
-
-{{range . }}
-{{.Name}}.rst{{end}}
-
-report generated at {{now}}.
+report generated at {{now}}
 
 Bagits
 ======

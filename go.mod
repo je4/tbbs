@@ -4,14 +4,20 @@ go 1.16
 
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/blend/go-sdk v1.20210413.2
 	github.com/dgraph-io/badger v1.6.2
 	github.com/dgraph-io/ristretto v0.0.3 // indirect
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/goph/emperror v0.17.2
+	github.com/huandu/xstrings v1.3.2 // indirect
+	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/je4/bagarc/v2 v2.0.2
 	github.com/je4/sshtunnel/v2 v2.0.0-20210324104725-ab38247e5ffa
+	github.com/mitchellh/copystructure v1.1.2 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/pkg/sftp v1.13.0
 	github.com/spf13/pflag v1.0.5
