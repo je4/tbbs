@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"database/sql"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"github.com/dgraph-io/badger"
@@ -18,13 +17,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"text/template"
 	"time"
 )
-
-// Embed the entire directory.
-//go:embed templates
-var templates embed.FS
 
 const encExt = "aes256"
 
@@ -389,9 +383,31 @@ func (i *Ingest) bagitLoad(name string) (*IngestBagit, error) {
 	return bagit, nil
 }
 
-func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath string, filesize int64, sha256 string, sha512 string, md5 string) error {
-	sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, sha256, sha512, md5) VALUES(?, ?, ?, ?, ?, ?, ?)", i.schema)
-	_, err := i.db.Exec(sqlstr, bagit.id, zippath, diskpath, filesize, sha256, sha512, md5)
+func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath string, filesize int64, sha256 string, sha512 string, md5 string, mimetype string, width int64, height int64, duration int64, indexer string) error {
+	var _mimetype, _indexer sql.NullString
+	var _width, _height, _duration sql.NullInt64
+	_indexer.Scan(indexer)
+	if indexer == "" {
+		_indexer.Valid = false
+	}
+	_mimetype.Scan(mimetype)
+	if mimetype == "" {
+		_mimetype.Valid = false
+	}
+	_width.Scan(width)
+	if width == 0 {
+		_width.Valid = false
+	}
+	_height.Scan(height)
+	if height == 0 {
+		_height.Valid = false
+	}
+	_duration.Scan(duration)
+	if duration == 0 {
+		_duration.Valid = false
+	}
+	sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
+	_, err := i.db.Exec(sqlstr, bagit.id, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot insert content of bagit %s at %s - %s", bagit.name, sqlstr)
 	}
@@ -543,10 +559,11 @@ func (i *Ingest) Ingest() error {
 		metaWriter.Flush()
 
 		type Metadata []struct {
-			Path     string            `json:"path"`
-			Zippath  string            `json:"zippath"`
-			Checksum map[string]string `json:"checksum"`
-			Size     int64             `json:"size"`
+			Path     string                 `json:"path"`
+			Zippath  string                 `json:"zippath"`
+			Checksum map[string]string      `json:"checksum"`
+			Size     int64                  `json:"size"`
+			Indexer  map[string]interface{} `json:"indexer"`
 		}
 		var metadata Metadata
 
@@ -582,7 +599,8 @@ func (i *Ingest) Ingest() error {
 		}
 
 		for _, meta := range metadata {
-			var sha256, sha512, md5 string
+			var sha256, sha512, md5, mimetype, indexer string
+			var width, height, duration int64
 			if str, ok := meta.Checksum["sha256"]; ok {
 				sha256 = str
 			}
@@ -592,7 +610,29 @@ func (i *Ingest) Ingest() error {
 			if str, ok := meta.Checksum["md5"]; ok {
 				md5 = str
 			}
-			bagit.AddContent(meta.Zippath, meta.Path, meta.Size, sha256, sha512, md5)
+			if i, ok := meta.Indexer["mimetype"]; ok {
+				mimetype, ok = i.(string)
+			}
+			if i, ok := meta.Indexer["width"]; ok {
+				if fl, ok := i.(float64); ok {
+					width = int64(fl)
+				}
+			}
+			if i, ok := meta.Indexer["height"]; ok {
+				if fl, ok := i.(float64); ok {
+					height = int64(fl)
+				}
+			}
+			if i, ok := meta.Indexer["duration"]; ok {
+				if fl, ok := i.(float64); ok {
+					duration = int64(fl)
+				}
+			}
+			if data, err := json.Marshal(meta.Indexer); err == nil {
+				indexer = string(data)
+			}
+
+			bagit.AddContent(meta.Zippath, meta.Path, meta.Size, sha256, sha512, md5, mimetype, width, height, duration, indexer)
 		}
 
 		/*
@@ -639,83 +679,6 @@ type TplBagitEntry struct {
 	Size         int64
 	Ingested     string
 	TestsMessage string
-}
-
-func (i *Ingest) Report() error {
-	daTest, ok := i.tests["checksum"]
-	if !ok {
-		return fmt.Errorf("cannot find test checksum")
-	}
-
-	funcMap := template.FuncMap{
-		"now": time.Now,
-		"replace": func(input, from, to string) string {
-			i.logger.Debugf("replace %s - %s -> %s", input, from, to)
-			return strings.Replace(input, from, to, -1)
-		},
-	}
-	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
-	if err != nil {
-		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
-	}
-	index, err := template.New("index").Funcs(funcMap).Parse(string(indexTplStr))
-	if err != nil {
-		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
-	}
-	/*
-		bagitTplStr, err := templates.ReadFile("templates/bagut.rst.tpl")
-		if err != nil {
-			return emperror.Wrapf(err, "cannot open template bagit.rst.tpl")
-		}
-		bagitTpl, err := template.New("index").Funcs(funcMap).Parse(string(bagitTplStr))
-		if err != nil {
-			return emperror.Wrapf(err, "cannot parse index.rst.tpl")
-		}
-	*/
-	bagits := []*TplBagitEntry{}
-	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
-		b := &TplBagitEntry{
-			Name:     bagit.name,
-			Size:     bagit.size,
-			Ingested: bagit.creationdate.Format("2006-01-02"),
-		}
-		var testPassed, testFailed int64
-		for _, loc := range i.locations {
-			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
-			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
-			}
-			if err := t.Last(); err != nil {
-				i.logger.Errorf("cannot check %s at %s: %v", bagit.name, loc.name, err)
-				break
-				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
-			}
-			switch t.status {
-			case "passed":
-				testPassed++
-			case "failed":
-				testFailed++
-			default:
-				return fmt.Errorf("invalid test status %s for test #%v", t.status, t.id)
-			}
-		}
-		b.TestsMessage = fmt.Sprintf("%v/%v tests passed", testPassed, testFailed+testPassed)
-		bagits = append(bagits, b)
-		return nil
-	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
-	}
-
-	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
-	}
-	defer ifp.Close()
-	if err := index.Execute(ifp, bagits); err != nil {
-		return emperror.Wrapf(err, "cannot execute index template")
-	}
-
-	return nil
 }
 
 func (i *Ingest) DELETE_Encrypt(name, bagitPath string) error {

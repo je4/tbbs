@@ -44,8 +44,8 @@ func (bagit *IngestBagit) Check(location *IngestLocation, checkInterval time.Dur
 	return true, nil
 }
 
-func (bagit *IngestBagit) AddContent(zippath, diskpath string, filesize int64, sha256, sha512, md5 string) error {
-	return bagit.ingest.bagitAddContent(bagit, zippath, diskpath, filesize, sha256, sha512, md5)
+func (bagit *IngestBagit) AddContent(zippath, diskpath string, filesize int64, sha256, sha512, md5, mimetype string, width, height, duration int64, indexer string) error {
+	return bagit.ingest.bagitAddContent(bagit, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer)
 }
 
 func (bagit *IngestBagit) GetKey() []byte {

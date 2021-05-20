@@ -1,12 +1,14 @@
 package tbbs
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
 	"github.com/blend/go-sdk/crypto"
 	"github.com/goph/emperror"
+	"github.com/machinebox/progress"
 	"github.com/tidwall/transform"
 	"io"
 	"net/url"
@@ -203,17 +205,34 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 			return emperror.Wrapf(err, "cannot open source file %s", sourcePath)
 		}
 		defer src.Close()
+
+		stat, err := src.Stat()
+		if err != nil {
+			return emperror.Wrapf(err, "cannot stat %s", sourcePath)
+		}
+		size := stat.Size()
+		src2 := progress.NewReader(src)
+
+		// Start a goroutine printing progress
+		go func() {
+			progressChan := progress.NewTicker(context.Background(), src2, size, 2*time.Second)
+			for p := range progressChan {
+				ibl.ingest.logger.Infof("uploading %s - %v remaining...", ibl.bagit.name, p.Remaining().Round(time.Second))
+			}
+			ibl.ingest.logger.Infof("uploading %s - completed", ibl.bagit.name)
+		}()
+
 		var r io.Reader
 		if ibl.location.IsEncrypted() {
 			//var key, iv []byte
-			_, _, r, err = ibl.createEncrypt(src)
+			_, _, r, err = ibl.createEncrypt(src2)
 			if err != nil {
 				return emperror.Wrap(err, "cannot create encryption pipeline")
 			}
 			//message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out /tmp/%s -K '%x' -iv '%x'", ibl.bagit.name, encExt, ibl.bagit.name, string(key), string(iv))
 			message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K '`cat %s/%s.key`' -iv '`cat %s/%s.iv`'", ibl.bagit.name, encExt, ibl.bagit.name, ibl.ingest.keyDir, ibl.bagit.name, ibl.ingest.keyDir, ibl.bagit.name)
 		} else {
-			r = src
+			r = src2
 		}
 
 		size, sha512Str, err := ibl.ingest.sftp.Put(targetUrl, ibl.location.path.User.Username(), r)

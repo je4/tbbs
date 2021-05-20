@@ -84,6 +84,24 @@ func (sc *SSHConnection) ReadFile(path string, w io.Writer) (int64, error) {
 		return 0, emperror.Wrapf(err, "cannot open remote file %s", path)
 	}
 	defer r.Close()
+
+	/*
+		stat, err := r.Stat()
+		if err != nil {
+			return 0, emperror.Wrapf(err, "cannot stat %s", path)
+		}
+		size := stat.Size()
+		r2 := progress.NewReader(r)
+		// Start a goroutine printing progress
+		go func() {
+			ctx := context.Background()
+			progressChan := progress.NewTicker(ctx, r2, size, 1*time.Second)
+			for p := range progressChan {
+				fmt.Printf("\r%v remaining...", p.Remaining().Round(time.Second))
+			}
+			fmt.Println("\rdownload is completed\n")
+		}()
+	*/
 	written, err := io.Copy(w, r)
 	if err != nil {
 		return 0, emperror.Wrap(err, "cannot copy data")
