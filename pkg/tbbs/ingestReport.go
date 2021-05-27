@@ -4,6 +4,8 @@ import (
 	"embed"
 	"fmt"
 	"github.com/goph/emperror"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,8 +15,88 @@ import (
 )
 
 // Embed the entire directory.
-//go:embed templates
+//go:embed templates/* templates/reportbase/*
 var templates embed.FS
+
+type TplBagitEntryTest struct {
+	Location string
+	Date     time.Time
+	Status   string
+}
+type TplBagitEntry struct {
+	Name         string
+	Size         string
+	Ingested     string
+	TestsMessage string
+}
+
+func splitLine(str string, maxWidth int) []string {
+	words := strings.Split(str, " ")
+	lines := []string{""}
+	line := 0
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+		if len(lines[line])+len(word) >= maxWidth {
+			line++
+			lines = append(lines, "")
+		}
+		lines[line] += " " + word
+	}
+	result := []string{}
+	for _, s := range lines {
+		s = strings.TrimSpace(s)
+		if len(s) > 0 {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+func (tbe TplBagitEntry) Cols() []string {
+	return []string{"name", "size", "ingested", "testsmessage"}
+}
+func (tbe TplBagitEntry) FieldSize(col string, maxWidth int) (w int, h int) {
+	data := tbe.Data(col, maxWidth)
+	h = len(data)
+	if h == 0 {
+		return 0, 0
+	}
+	for l := 0; l < h; l++ {
+		_w := len(data[l])
+		if _w > w {
+			w = _w
+		}
+	}
+	return
+}
+
+func (tbe TplBagitEntry) Data(col string, maxWidth int) []string {
+	data := []string{}
+	switch col {
+	case "name":
+		data = splitLine(tbe.Name, maxWidth)
+	case "size":
+		data = splitLine(tbe.Size, maxWidth)
+	case "ingested":
+		data = splitLine(tbe.Ingested, maxWidth)
+	case "testsmessage":
+		data = splitLine(tbe.TestsMessage, maxWidth)
+	}
+	return data
+}
+func (tbe TplBagitEntry) Title(col string) string {
+	result := ""
+	switch col {
+	case "name":
+		result = "Name"
+	case "size":
+		result = "Grösse"
+	case "ingested":
+		result = "Vereinnahmung"
+		//	case "testsmessage":
+	}
+	return result
+}
 
 func recurseCopyTemplates(base, sub, target string) error {
 	path := filepath.ToSlash(filepath.Join(base, sub))
@@ -23,17 +105,20 @@ func recurseCopyTemplates(base, sub, target string) error {
 		return emperror.Wrapf(err, "no reportbase compiled into executable")
 	}
 	for _, fe := range fs {
-		subPath := filepath.ToSlash(filepath.Join(path, fe.Name()))
+		subPath := filepath.ToSlash(filepath.Join(sub, fe.Name()))
 		if fe.IsDir() {
-			if err := os.Mkdir(filepath.Join(target, fe.Name()), 0755); err != nil {
-				return emperror.Wrapf(err, "cannot create folder %s", filepath.Join(target, fe.Name()))
+			dir := filepath.Join(target, fe.Name())
+			if _, err := os.Stat(dir); err != nil {
+				if err := os.Mkdir(dir, 0755); err != nil {
+					return emperror.Wrapf(err, "cannot create folder %s", filepath.Join(target, fe.Name()))
+				}
 			}
 
 			if err := recurseCopyTemplates(base, subPath, target); err != nil {
 				return emperror.Wrapf(err, "cannot copy template to %s", subPath)
 			}
 		} else {
-			in, err := templates.Open(subPath)
+			in, err := templates.Open(filepath.ToSlash(filepath.Join(base, subPath)))
 			if err != nil {
 				return emperror.Wrapf(err, "cannot open %s", subPath)
 			}
@@ -45,7 +130,7 @@ func recurseCopyTemplates(base, sub, target string) error {
 			if _, err := io.Copy(out, in); err != nil {
 				in.Close()
 				out.Close()
-				return emperror.Wrapf(err, "cannot copy data %s -> %s", subPath, filepath.Join(target, sub, fe.Name()))
+				return emperror.Wrapf(err, "cannot copy data %s/%s -> %s", path, subPath, filepath.Join(target, sub, fe.Name()))
 			}
 			in.Close()
 			out.Close()
@@ -55,7 +140,12 @@ func recurseCopyTemplates(base, sub, target string) error {
 }
 
 func createSphinx(project, copyright, author, release, path string) error {
-	if err := recurseCopyTemplates("reportbase", "", path); err != nil {
+	if _, err := os.Stat(path); err != nil {
+		if err := os.Mkdir(path, 0755); err != nil {
+			return emperror.Wrapf(err, "cannot create folder %s", path)
+		}
+	}
+	if err := recurseCopyTemplates("templates/reportbase", "", path); err != nil {
 		return emperror.Wrapf(err, "cannot copy shpinx template to %s", path)
 	}
 	confPyStr, err := templates.ReadFile("templates/conf.py.tpl")
@@ -78,32 +168,25 @@ func createSphinx(project, copyright, author, release, path string) error {
 	return nil
 }
 
-func (i *Ingest) Report() error {
+var templateFuncMap = template.FuncMap{
+	"now": time.Now,
+	"replace": func(input, from, to string) string {
+		return strings.Replace(input, from, to, -1)
+	},
+}
+
+func (i *Ingest) ReportTemplate(t *template.Template, wr io.Writer) error {
+	p := message.NewPrinter(language.German)
 	daTest, ok := i.tests["checksum"]
 	if !ok {
 		return fmt.Errorf("cannot find test checksum")
 	}
 
-	funcMap := template.FuncMap{
-		"now": time.Now,
-		"replace": func(input, from, to string) string {
-			i.logger.Debugf("replace %s - %s -> %s", input, from, to)
-			return strings.Replace(input, from, to, -1)
-		},
-	}
-	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
-	if err != nil {
-		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
-	}
-	index, err := template.New("index").Funcs(funcMap).Parse(string(indexTplStr))
-	if err != nil {
-		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
-	}
-	bagits := []*TplBagitEntry{}
+	bagits := []RSTTableRow{}
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
-		b := &TplBagitEntry{
+		b := TplBagitEntry{
 			Name:     bagit.name,
-			Size:     bagit.size,
+			Size:     p.Sprintf("%d", bagit.size),
 			Ingested: bagit.creationdate.Format("2006-01-02"),
 		}
 		var testPassed, testFailed int64
@@ -132,14 +215,38 @@ func (i *Ingest) Report() error {
 	}); err != nil {
 		return emperror.Wrap(err, "error iterating bagits")
 	}
+	table := RSTTable{Data: bagits}
+	if err := t.Execute(wr, struct {
+		BagitTable RSTTable
+		Bagits     []RSTTableRow
+	}{BagitTable: table, Bagits: bagits}); err != nil {
+		return emperror.Wrapf(err, "cannot execute index template")
+	}
+	return nil
+}
 
-	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+func (i *Ingest) Report() error {
+	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
+	}
+	index, err := template.New("index").Funcs(templateFuncMap).Parse(string(indexTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+	}
+
+	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
+		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
+	}
+
+	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
 	}
 	defer ifp.Close()
-	if err := index.Execute(ifp, bagits); err != nil {
-		return emperror.Wrapf(err, "cannot execute index template")
+
+	if err := i.ReportTemplate(index, ifp); err != nil {
+		return emperror.Wrapf(err, "cannot execute template %s", "templates/index.rst.tpl")
 	}
 
 	return nil

@@ -1,31 +1,22 @@
 TBBS Test Report
 ================
 
-.. toctree::
-   :maxdepth: 2
-   :numbered:
-   :titlesonly:
-   :glob:
-   :hidden:
+{{ .BagitTable.DrawTable }}
 
+.. list-table:: Bagits
+   :widths: 25 20 20 35
+   :header-rows: 1
 
-{{range . }}
-{{.Name}}.rst{{end}}
+   * - Name
+     - Size
+     - Ingest Date
+     - Tests
+   {{range .Bagits }}* - {{.Name}}
+     - ..right:: {{.Size}}
+     - {{.Ingested}}
+     - {{.TestsMessage}}
+   {{end}}
+
 
 report generated at {{now}}.
 
-Bagits
-======
-
-.. csv-table::
-   :header: "Name", "Size", "Ingest Date", "Tests"
-
-   {{range . }}"{{.Name}}", {{.Size}}, "{{.Ingested}}", "{{.TestsMessage}}"
-   {{end}}
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

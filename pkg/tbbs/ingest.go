@@ -669,18 +669,6 @@ func (i *Ingest) Check() error {
 	return nil
 }
 
-type TplBagitEntryTest struct {
-	Location string
-	Date     time.Time
-	Status   string
-}
-type TplBagitEntry struct {
-	Name         string
-	Size         int64
-	Ingested     string
-	TestsMessage string
-}
-
 func (i *Ingest) DELETE_Encrypt(name, bagitPath string) error {
 	if _, err := os.Stat(bagitPath + "." + encExt); err == nil {
 		return fmt.Errorf("encrypted bagit file %s.%s already exists", name, encExt)
