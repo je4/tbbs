@@ -28,6 +28,8 @@ type TplBagitEntry struct {
 	Size         string
 	Ingested     string
 	TestsMessage string
+	Price        string
+	Quality      string
 }
 
 func splitLine(str string, maxWidth int) []string {
@@ -53,7 +55,7 @@ func splitLine(str string, maxWidth int) []string {
 }
 
 func (tbe TplBagitEntry) Cols() []string {
-	return []string{"name", "size", "ingested", "testsmessage"}
+	return []string{"name", "size", "ingested", "testsmessage", "quality", "price"}
 }
 func (tbe TplBagitEntry) FieldSize(col string, maxWidth int) (w int, h int) {
 	data := tbe.Data(col, maxWidth)
@@ -81,6 +83,10 @@ func (tbe TplBagitEntry) Data(col string, maxWidth int) []string {
 		data = splitLine(tbe.Ingested, maxWidth)
 	case "testsmessage":
 		data = splitLine(tbe.TestsMessage, maxWidth)
+	case "price":
+		data = []string{tbe.Price}
+	case "quality":
+		data = []string{tbe.Quality}
 	}
 	return data
 }
@@ -93,7 +99,10 @@ func (tbe TplBagitEntry) Title(col string) string {
 		result = "Grösse"
 	case "ingested":
 		result = "Vereinnahmung"
-		//	case "testsmessage":
+	case "price":
+		result = "Kosten"
+	case "quality":
+		result = "Qualität"
 	}
 	return result
 }
@@ -175,7 +184,7 @@ var templateFuncMap = template.FuncMap{
 	},
 }
 
-func (i *Ingest) ReportTemplate(t *template.Template, wr io.Writer) error {
+func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
 	p := message.NewPrinter(language.German)
 	daTest, ok := i.tests["checksum"]
 	if !ok {
@@ -184,12 +193,60 @@ func (i *Ingest) ReportTemplate(t *template.Template, wr io.Writer) error {
 
 	bagits := []RSTTableRow{}
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
+		var quality, price float64
 		b := TplBagitEntry{
 			Name:     bagit.name,
 			Size:     p.Sprintf("%d", bagit.size),
 			Ingested: bagit.creationdate.Format("2006-01-02"),
 		}
 		var testPassed, testFailed int64
+		for _, loc := range i.locations {
+			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
+			if err != nil {
+				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
+			}
+			if err := t.Last(); err != nil {
+				i.logger.Errorf("cannot check %s at %s: %v", bagit.name, loc.name, err)
+				break
+				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
+			}
+			price += loc.costs * float64(bagit.size) / 1000000
+			switch t.status {
+			case "passed":
+				testPassed++
+				quality += loc.quality
+			case "failed":
+				testFailed++
+			default:
+				return fmt.Errorf("invalid test status %s for test #%v", t.status, t.id)
+			}
+		}
+		b.Price = fmt.Sprintf("%.2f", price)
+		b.Quality = fmt.Sprintf("%.0f", quality)
+		b.TestsMessage = fmt.Sprintf("%v/%v tests passed", testPassed, testFailed+testPassed)
+		bagits = append(bagits, b)
+		return nil
+	}); err != nil {
+		return emperror.Wrap(err, "error iterating bagits")
+	}
+	table := RSTTable{Data: bagits}
+	if err := t.Execute(wr, struct {
+		BagitTable RSTTable
+		Bagits     []RSTTableRow
+	}{BagitTable: table, Bagits: bagits}); err != nil {
+		return emperror.Wrapf(err, "cannot execute bagits template")
+	}
+	return nil
+}
+
+func (i *Ingest) ReportIndex(t *template.Template, wr io.Writer) error {
+	daTest, ok := i.tests["checksum"]
+	if !ok {
+		return fmt.Errorf("cannot find test checksum")
+	}
+
+	var testPassed, testFailed int64
+	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
@@ -209,23 +266,26 @@ func (i *Ingest) ReportTemplate(t *template.Template, wr io.Writer) error {
 				return fmt.Errorf("invalid test status %s for test #%v", t.status, t.id)
 			}
 		}
-		b.TestsMessage = fmt.Sprintf("%v/%v tests passed", testPassed, testFailed+testPassed)
-		bagits = append(bagits, b)
 		return nil
 	}); err != nil {
 		return emperror.Wrap(err, "error iterating bagits")
 	}
-	table := RSTTable{Data: bagits}
 	if err := t.Execute(wr, struct {
-		BagitTable RSTTable
-		Bagits     []RSTTableRow
-	}{BagitTable: table, Bagits: bagits}); err != nil {
+		TestsFailed int64
+	}{TestsFailed: testFailed}); err != nil {
 		return emperror.Wrapf(err, "cannot execute index template")
 	}
 	return nil
 }
 
 func (i *Ingest) Report() error {
+	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
+		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
+	}
+
+	//
+	// index
+	//
 	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
@@ -235,19 +295,39 @@ func (i *Ingest) Report() error {
 		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
 	}
 
-	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
-		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
-	}
-
 	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
 	}
-	defer ifp.Close()
 
-	if err := i.ReportTemplate(index, ifp); err != nil {
+	if err := i.ReportIndex(index, ifp); err != nil {
+		ifp.Close()
 		return emperror.Wrapf(err, "cannot execute template %s", "templates/index.rst.tpl")
 	}
+	ifp.Close()
+
+	//
+	// bagits
+	//
+	bagitsTplStr, err := templates.ReadFile("templates/bagits.rst.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template bagits.rst.tpl")
+	}
+	bagits, err := template.New("bagits").Funcs(templateFuncMap).Parse(string(bagitsTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+	}
+
+	ifp, err = os.OpenFile(filepath.Join(i.reportDir, "main", "bagits.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "bagits.rst"))
+	}
+
+	if err := i.ReportBagits(bagits, ifp); err != nil {
+		ifp.Close()
+		return emperror.Wrapf(err, "cannot execute template %s", "templates/bagits.rst.tpl")
+	}
+	ifp.Close()
 
 	return nil
 }

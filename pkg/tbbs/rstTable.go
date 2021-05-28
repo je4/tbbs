@@ -58,7 +58,7 @@ func (t RSTTable) ColWidth(col string, maxWidth int) int {
 	if tw > width {
 		width = tw
 	}
-	return width + 1
+	return width + 2
 }
 
 func (t RSTTable) DrawTable() string {
@@ -67,7 +67,7 @@ func (t RSTTable) DrawTable() string {
 	}
 	row0 := t.Data[0]
 	cols := row0.Cols()
-	var maxWidth = 100 / len(cols)
+	var maxWidth = 10 * 100 / len(cols)
 	widths := make(map[string]int)
 	for _, col := range cols {
 		widths[col] = t.ColWidth(col, maxWidth)
