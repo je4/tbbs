@@ -48,7 +48,7 @@ func (ibl *IngestBagitTestLocation) Last() error {
 func (ibl *IngestBagitTestLocation) checksumSFTP() ([]byte, error) {
 	shaSink := sha512.New()
 	urlstring := ibl.location.path.String()
-	urlstring += "/" + ibl.bagit.name
+	urlstring += "/" + ibl.bagit.Name
 	if ibl.location.IsEncrypted() {
 		urlstring += "." + encExt
 	}
@@ -57,7 +57,7 @@ func (ibl *IngestBagitTestLocation) checksumSFTP() ([]byte, error) {
 		return nil, emperror.Wrapf(err, "cannot parse url %s", urlstring)
 	}
 	if _, err := ibl.ingest.sftp.Get(u, shaSink); err != nil {
-		return nil, emperror.Wrapf(err, "cannot generate checksum of %s at %s", ibl.bagit.name, ibl.location.name)
+		return nil, emperror.Wrapf(err, "cannot generate checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
 	return shaSink.Sum(nil), nil
 }
@@ -69,7 +69,7 @@ func (ibl *IngestBagitTestLocation) checksumFile() ([]byte, error) {
 	} else {
 		path = "/" + path
 	}
-	path = filepath.Join(path, ibl.bagit.name)
+	path = filepath.Join(path, ibl.bagit.Name)
 	if ibl.location.IsEncrypted() {
 		path += "." + encExt
 	}
@@ -80,7 +80,7 @@ func (ibl *IngestBagitTestLocation) checksumFile() ([]byte, error) {
 	defer fp.Close()
 	shaSink := sha512.New()
 	if _, err := io.Copy(shaSink, fp); err != nil {
-		return nil, emperror.Wrapf(err, "cannot create checksum of %s at %s", ibl.bagit.name, ibl.location.name)
+		return nil, emperror.Wrapf(err, "cannot create checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
 	return shaSink.Sum(nil), nil
 }
@@ -91,7 +91,7 @@ func (ibl *IngestBagitTestLocation) Test() error {
 		return emperror.Wrap(err, "cannot check for test need")
 	}
 	if !testNeeded {
-		ibl.ingest.logger.Infof("no %s test needed for %s at %s", ibl.test.name, ibl.bagit.name, ibl.location.name)
+		ibl.ingest.logger.Infof("no %s test needed for %s at %s", ibl.test.name, ibl.bagit.Name, ibl.location.name)
 		return nil
 	}
 	if ibl.test.name != "checksum" {
@@ -103,25 +103,25 @@ func (ibl *IngestBagitTestLocation) Test() error {
 	case "sftp":
 		checksumBytes, err := ibl.checksumSFTP()
 		if err != nil {
-			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.name, ibl.location.name, err)
+			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.Name, ibl.location.name, err)
 		} else {
 			checksum = fmt.Sprintf("%x", checksumBytes)
 			if ibl.location.IsEncrypted() {
-				targetChecksum = ibl.bagit.sha512_aes
+				targetChecksum = ibl.bagit.SHA512_aes
 			} else {
-				targetChecksum = ibl.bagit.sha512
+				targetChecksum = ibl.bagit.SHA512
 			}
 		}
 	case "file":
 		checksumBytes, err := ibl.checksumFile()
 		if err != nil {
-			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.name, ibl.location.name, err)
+			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.Name, ibl.location.name, err)
 		} else {
 			checksum = fmt.Sprintf("%x", checksumBytes)
 			if ibl.location.IsEncrypted() {
-				targetChecksum = ibl.bagit.sha512_aes
+				targetChecksum = ibl.bagit.SHA512_aes
 			} else {
-				targetChecksum = ibl.bagit.sha512
+				targetChecksum = ibl.bagit.SHA512
 			}
 		}
 	default:
@@ -135,8 +135,8 @@ func (ibl *IngestBagitTestLocation) Test() error {
 	}
 	ibl.end = time.Now()
 	if err := ibl.Store(); err != nil {
-		return emperror.Wrapf(err, "cannot store test for %s at %s", ibl.bagit.name, ibl.location.name)
+		return emperror.Wrapf(err, "cannot store test for %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
-	ibl.ingest.logger.Infof("checksum for %s at %s %s", ibl.bagit.name, ibl.location.name, ibl.status)
+	ibl.ingest.logger.Infof("checksum for %s at %s %s", ibl.bagit.Name, ibl.location.name, ibl.status)
 	return nil
 }

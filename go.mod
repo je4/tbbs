@@ -10,7 +10,7 @@ require (
 	github.com/dgraph-io/badger v1.6.2
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/goph/emperror v0.17.2
-	github.com/je4/bagarc/v2 v2.0.3-0.20210531094324-becf348ff331
+	github.com/je4/bagarc/v2 v2.0.3-0.20210531132437-d95d194aba7c
 	github.com/je4/sshtunnel/v2 v2.0.0-20210324104725-ab38247e5ffa
 	github.com/machinebox/progress v0.2.0
 	github.com/matryer/is v1.4.0 // indirect

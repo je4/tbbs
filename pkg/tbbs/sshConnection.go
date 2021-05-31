@@ -90,12 +90,12 @@ func (sc *SSHConnection) ReadFile(path string, w io.Writer) (int64, error) {
 		if err != nil {
 			return 0, emperror.Wrapf(err, "cannot stat %s", path)
 		}
-		size := stat.Size()
+		Size := stat.Size()
 		r2 := progress.NewReader(r)
 		// Start a goroutine printing progress
 		go func() {
 			ctx := context.Background()
-			progressChan := progress.NewTicker(ctx, r2, size, 1*time.Second)
+			progressChan := progress.NewTicker(ctx, r2, Size, 1*time.Second)
 			for p := range progressChan {
 				fmt.Printf("\r%v remaining...", p.Remaining().Round(time.Second))
 			}

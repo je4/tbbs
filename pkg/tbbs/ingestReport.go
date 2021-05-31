@@ -18,21 +18,10 @@ import (
 //go:embed templates/* templates/reportbase/*
 var templates embed.FS
 
-type TplBagitEntryTest struct {
-	Location string
-	Date     time.Time
-	Status   string
-}
-type TplBagitEntry struct {
-	Name         string
-	Size         string
-	Ingested     string
-	TestsMessage string
-	Price        string
-	Quality      string
-}
-
 func splitLine(str string, maxWidth int) []string {
+	if maxWidth == 0 {
+		return []string{str}
+	}
 	words := strings.Split(str, " ")
 	lines := []string{""}
 	line := 0
@@ -54,8 +43,22 @@ func splitLine(str string, maxWidth int) []string {
 	return result
 }
 
+type TplBagitEntryTest struct {
+	Location string
+	Date     time.Time
+	Status   string
+}
+type TplBagitEntry struct {
+	Name         string
+	Size         string
+	Ingested     string
+	TestsMessage string
+	Price        string
+	Quality      string
+}
+
 func (tbe TplBagitEntry) Cols() []string {
-	return []string{"name", "size", "ingested", "testsmessage", "quality", "price"}
+	return []string{"Name", "Size", "ingested", "testsmessage", "quality", "price"}
 }
 func (tbe TplBagitEntry) FieldSize(col string, maxWidth int) (w int, h int) {
 	data := tbe.Data(col, maxWidth)
@@ -75,9 +78,9 @@ func (tbe TplBagitEntry) FieldSize(col string, maxWidth int) (w int, h int) {
 func (tbe TplBagitEntry) Data(col string, maxWidth int) []string {
 	data := []string{}
 	switch col {
-	case "name":
+	case "Name":
 		data = splitLine(tbe.Name, maxWidth)
-	case "size":
+	case "Size":
 		data = splitLine(tbe.Size, maxWidth)
 	case "ingested":
 		data = splitLine(tbe.Ingested, maxWidth)
@@ -93,9 +96,9 @@ func (tbe TplBagitEntry) Data(col string, maxWidth int) []string {
 func (tbe TplBagitEntry) Title(col string) string {
 	result := ""
 	switch col {
-	case "name":
+	case "Name":
 		result = "Name"
-	case "size":
+	case "Size":
 		result = "Grösse"
 	case "ingested":
 		result = "Vereinnahmung"
@@ -103,6 +106,59 @@ func (tbe TplBagitEntry) Title(col string) string {
 		result = "Kosten"
 	case "quality":
 		result = "Qualität"
+	}
+	return result
+}
+
+type TplBagitContent struct {
+	OrigPath            string
+	Mimetype, Dimension string
+	Filesize            string
+}
+
+func (tbc TplBagitContent) Cols() []string {
+	return []string{"origpath", "mimetype", "dimension", "filesize"}
+}
+func (tbc TplBagitContent) FieldSize(col string, maxWidth int) (w int, h int) {
+	data := tbc.Data(col, maxWidth)
+	h = len(data)
+	if h == 0 {
+		return 0, 0
+	}
+	for l := 0; l < h; l++ {
+		_w := len(data[l])
+		if _w > w {
+			w = _w
+		}
+	}
+	return
+}
+
+func (tbc TplBagitContent) Data(col string, maxWidth int) []string {
+	data := []string{}
+	switch col {
+	case "origpath":
+		data = splitLine(tbc.OrigPath, maxWidth)
+	case "mimetype":
+		data = splitLine(tbc.Mimetype, maxWidth)
+	case "dimension":
+		data = splitLine(tbc.Dimension, maxWidth)
+	case "filesize":
+		data = splitLine(tbc.Filesize, maxWidth)
+	}
+	return data
+}
+func (tbc TplBagitContent) Title(col string) string {
+	result := ""
+	switch col {
+	case "origpath":
+		result = "Original path"
+	case "mimetype":
+		result = "Mimetype"
+	case "dimension":
+		result = "Dimension"
+	case "filesize":
+		result = "Filesize"
 	}
 	return result
 }
@@ -184,6 +240,41 @@ var templateFuncMap = template.FuncMap{
 	},
 }
 
+func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Writer) error {
+	p := message.NewPrinter(language.German)
+	contents := []RSTTableRow{}
+	bagit.ContentLoadAll(func(content *IngestBagitContent) error {
+		ct := TplBagitContent{
+			OrigPath: content.DiskPath,
+			Mimetype: content.Mimetype,
+			Filesize: p.Sprintf("%d", content.Filesize),
+		}
+		if content.Width > 0 || content.Height > 0 {
+			ct.Dimension = fmt.Sprintf("%vx%vpixel", content.Width, content.Height)
+		}
+		if content.Duration > 0 {
+			if len(ct.Dimension) > 0 {
+				ct.Dimension += ", "
+			}
+			ct.Dimension += fmt.Sprintf("%vsec", content.Duration)
+		}
+		contents = append(contents, ct)
+		return nil
+	})
+
+	for name, loc := range bagit.ingest.locations {
+		//todo: something
+	}
+
+	if err := t.Execute(wr, struct {
+		Contents RSTTable
+		Bagit    IngestBagit
+	}{Contents: RSTTable{Data: contents}, Bagit: *bagit}); err != nil {
+		return emperror.Wrapf(err, "cannot execute bagits template")
+	}
+	return nil
+}
+
 func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
 	p := message.NewPrinter(language.German)
 	daTest, ok := i.tests["checksum"]
@@ -195,22 +286,22 @@ func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		var quality, price float64
 		b := TplBagitEntry{
-			Name:     bagit.name,
-			Size:     p.Sprintf("%d", bagit.size),
-			Ingested: bagit.creationdate.Format("2006-01-02"),
+			Name:     bagit.Name,
+			Size:     p.Sprintf("%d", bagit.Size),
+			Ingested: bagit.Creationdate.Format("2006-01-02"),
 		}
 		var testPassed, testFailed int64
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
+				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
 			}
 			if err := t.Last(); err != nil {
-				i.logger.Errorf("cannot check %s at %s: %v", bagit.name, loc.name, err)
+				i.logger.Errorf("cannot check %s at %s: %v", bagit.Name, loc.name, err)
 				break
-				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
+				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
 			}
-			price += loc.costs * float64(bagit.size) / 1000000
+			price += loc.costs * float64(bagit.Size) / 1000000
 			switch t.status {
 			case "passed":
 				testPassed++
@@ -250,12 +341,12 @@ func (i *Ingest) ReportIndex(t *template.Template, wr io.Writer) error {
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.name, loc.name)
+				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
 			}
 			if err := t.Last(); err != nil {
-				i.logger.Errorf("cannot check %s at %s: %v", bagit.name, loc.name, err)
+				i.logger.Errorf("cannot check %s at %s: %v", bagit.Name, loc.name, err)
 				break
-				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.name, loc.name)
+				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
 			}
 			switch t.status {
 			case "passed":
@@ -328,6 +419,39 @@ func (i *Ingest) Report() error {
 		return emperror.Wrapf(err, "cannot execute template %s", "templates/bagits.rst.tpl")
 	}
 	ifp.Close()
+
+	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
+		if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/"+bagit.Name); err != nil {
+			return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
+		}
+
+		//
+		// bagit
+		//
+		bagitTplStr, err := templates.ReadFile("templates/bagit.rst.tpl")
+		if err != nil {
+			return emperror.Wrapf(err, "cannot open template bagit.rst.tpl")
+		}
+		bagitTpl, err := template.New("bagit_" + bagit.Name).Funcs(templateFuncMap).Parse(string(bagitTplStr))
+		if err != nil {
+			return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+		}
+
+		ifp, err = os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+		if err != nil {
+			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
+		}
+
+		if err := i.ReportBagit(bagit, bagitTpl, ifp); err != nil {
+			ifp.Close()
+			return emperror.Wrapf(err, "cannot execute template %s", "templates/bagit.rst.tpl")
+		}
+		ifp.Close()
+
+		return nil
+	}); err != nil {
+		return emperror.Wrapf(err, "cannot load bagits")
+	}
 
 	return nil
 }
