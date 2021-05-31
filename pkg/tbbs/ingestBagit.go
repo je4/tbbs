@@ -21,6 +21,7 @@ type IngestBagit struct {
 	report       string
 	creator      string
 	creationdate time.Time
+	baginfo      string
 }
 
 func (bagit *IngestBagit) Store() error {

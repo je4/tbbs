@@ -110,7 +110,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 		return emperror.Wrapf(err, "cannot get number of rows - %s", sqlstr)
 	}
 
-	sqlstr = fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, creator, report, creationdate FROM %s.bagit LIMIT ?,?", i.schema)
+	sqlstr = fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, baginfo, creator, report, creationdate FROM %s.bagit LIMIT ?,?", i.schema)
 
 	var start int64
 	for start = 0; start < numRows; start += pageSize {
@@ -124,7 +124,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 				ingest: i,
 			}
 			var sha512_aes, report sql.NullString
-			if err := rows.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.creator, &report, &bagit.creationdate); err != nil {
+			if err := rows.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.baginfo, &bagit.creator, &report, &bagit.creationdate); err != nil {
 				rows.Close()
 				if err == sql.ErrNoRows {
 					return nil
@@ -274,8 +274,8 @@ func (i *Ingest) bagitStore(bagit *IngestBagit) (*IngestBagit, error) {
 			report.String = bagit.report
 			report.Valid = true
 		}
-		sqlstr := fmt.Sprintf("INSERT INTO %s.bagit(name, filesize, sha512, sha512_aes, report, creator, creationdate) VALUES(?, ?, ?, ?, ?, ?, ?)", i.schema)
-		res, err := i.db.Exec(sqlstr, bagit.name, bagit.size, bagit.sha512, sha512_aes, report, bagit.creator, bagit.creationdate)
+		sqlstr := fmt.Sprintf("INSERT INTO %s.bagit(name, filesize, sha512, sha512_aes, report, baginfo, creator, creationdate) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
+		res, err := i.db.Exec(sqlstr, bagit.name, bagit.size, bagit.sha512, sha512_aes, report, bagit.baginfo, bagit.creator, bagit.creationdate)
 		if err != nil {
 			return nil, emperror.Wrapf(err, "cannot insert bagit %s - %s", sqlstr, bagit.name)
 		}
@@ -286,8 +286,8 @@ func (i *Ingest) bagitStore(bagit *IngestBagit) (*IngestBagit, error) {
 
 		return bagit, nil
 	} else {
-		sqlstr := fmt.Sprintf("UPDATE %s.bagit SET name=?, filesize=?, sha512=?, sha512_aes=?, report=?, creator=?, creationdate=? WHERE bagitid=?", i.schema)
-		if _, err := i.db.Exec(sqlstr, bagit.name, bagit.size, bagit.sha512, bagit.sha512_aes, bagit.report, bagit.creator, bagit.creationdate, bagit.id); err != nil {
+		sqlstr := fmt.Sprintf("UPDATE %s.bagit SET name=?, filesize=?, sha512=?, sha512_aes=?, report=?, baginfo=?, creator=?, creationdate=? WHERE bagitid=?", i.schema)
+		if _, err := i.db.Exec(sqlstr, bagit.name, bagit.size, bagit.sha512, bagit.sha512_aes, bagit.report, bagit.baginfo, bagit.creator, bagit.creationdate, bagit.id); err != nil {
 			return nil, emperror.Wrapf(err, "cannot update bagit %s", sqlstr)
 		}
 	}
@@ -366,13 +366,13 @@ func (i *Ingest) bagitTestLocationLast(ibl *IngestBagitTestLocation) error {
 }
 
 func (i *Ingest) bagitLoad(name string) (*IngestBagit, error) {
-	sqlstr := fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, creator, report FROM %s.bagit WHERE name=?", i.schema)
+	sqlstr := fmt.Sprintf("SELECT bagitid, name, filesize, sha512, sha512_aes, creator, baginfo, report FROM %s.bagit WHERE name=?", i.schema)
 	row := i.db.QueryRow(sqlstr, name)
 	bagit := &IngestBagit{
 		ingest: i,
 	}
 	var sha512_aes, report sql.NullString
-	if err := row.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.creator, &report); err != nil {
+	if err := row.Scan(&bagit.id, &bagit.name, &bagit.size, &bagit.sha512, &sha512_aes, &bagit.creator, &bagit.baginfo, &report); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -436,7 +436,7 @@ func (i *Ingest) bagitLocationLoad(bagit *IngestBagit, location *IngestLocation)
 
 /* Creator functions */
 
-func (i *Ingest) BagitNew(name string, size int64, sha512, sha512_aes, report, creator string, creationtime time.Time) (*IngestBagit, error) {
+func (i *Ingest) BagitNew(name string, size int64, sha512, sha512_aes, report, creator, baginfo string, creationtime time.Time) (*IngestBagit, error) {
 	bagit := &IngestBagit{
 		ingest:       i,
 		id:           0,
@@ -445,6 +445,7 @@ func (i *Ingest) BagitNew(name string, size int64, sha512, sha512_aes, report, c
 		sha512:       sha512,
 		sha512_aes:   sha512_aes,
 		report:       report,
+		baginfo:      baginfo,
 		creator:      creator,
 		creationdate: creationtime,
 	}
@@ -552,11 +553,14 @@ func (i *Ingest) Ingest() error {
 
 		var metaBytes bytes.Buffer
 		metaWriter := bufio.NewWriter(&metaBytes)
-		if err := checker.Check(metaWriter); err != nil {
+		var baginfoBytes bytes.Buffer
+		baginfoWriter := bufio.NewWriter(&baginfoBytes)
+		if err := checker.Check(metaWriter, baginfoWriter); err != nil {
 			return emperror.Wrapf(err, "error checking file %v", bagitPath)
 		}
 		// paranoia
 		metaWriter.Flush()
+		baginfoWriter.Flush()
 
 		type Metadata []struct {
 			Path     string                 `json:"path"`
@@ -578,7 +582,7 @@ func (i *Ingest) Ingest() error {
 		}
 
 		// create bagit ingest object
-		bagit, err := i.BagitNew(name, info.Size(), cs, "", "", "bagarc", time.Now())
+		bagit, err := i.BagitNew(name, info.Size(), cs, "", "", "bagarc", baginfoBytes.String(), time.Now())
 		if err != nil {
 			return emperror.Wrapf(err, "cannot create bagit entity %s", name)
 		}
