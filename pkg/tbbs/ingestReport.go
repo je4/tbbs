@@ -2,13 +2,19 @@ package tbbs
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"github.com/goph/emperror"
+	ffmpeg_models "github.com/je4/goffmpeg/models"
+	"github.com/je4/indexer/pkg/indexer"
+	siegfried_pronom "github.com/richardlehane/siegfried/pkg/pronom"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -41,6 +47,19 @@ func splitLine(str string, maxWidth int) []string {
 		}
 	}
 	return result
+}
+
+type Indexer struct {
+	Duration  int64                             `json:"duration,omitempty"`
+	Width     int64                             `json:"width,omitempty"`
+	Height    int64                             `json:"height,omitempty"`
+	Errors    map[string]string                 `json:"errors,omitempty"`
+	Mimetype  string                            `json:"mimetype,omitempty"`
+	NSRL      []indexer.ActionNSRLMeta          `json:"nsrl,omitempty"`
+	Identify  map[string]interface{}            `json:"identify,omitempty"`
+	FFProbe   ffmpeg_models.Metadata            `json:"ffprobe,omitempty"`
+	Siegfried []siegfried_pronom.Identification `json:"siegfried,omitempty"`
+	Tika      map[string]interface{}            `json:"tika,omitempty"`
 }
 
 type TplBagitEntryTest struct {
@@ -163,6 +182,78 @@ func (tbc TplBagitContent) Title(col string) string {
 	return result
 }
 
+type TplBagitTest struct {
+	End, Status, Test, Message string
+}
+
+func (tbt TplBagitTest) Cols() []string {
+	return []string{"test", "end", "status", "message"}
+}
+func (tbt TplBagitTest) FieldSize(col string, maxWidth int) (w int, h int) {
+	data := tbt.Data(col, maxWidth)
+	h = len(data)
+	if h == 0 {
+		return 0, 0
+	}
+	for l := 0; l < h; l++ {
+		_w := len(data[l])
+		if _w > w {
+			w = _w
+		}
+	}
+	return
+}
+
+func (tbt TplBagitTest) Data(col string, maxWidth int) []string {
+	data := []string{}
+	switch col {
+	case "end":
+		data = splitLine(tbt.End, maxWidth)
+	case "status":
+		data = splitLine(tbt.Status, maxWidth)
+	case "test":
+		data = splitLine(tbt.Test, maxWidth)
+	case "message":
+		data = splitLine(tbt.Message, maxWidth)
+	}
+	return data
+}
+func (tbt TplBagitTest) Title(col string) string {
+	result := ""
+	switch col {
+	case "end":
+		result = "Time"
+	case "status":
+		result = "Status"
+	case "test":
+		result = "Test"
+	case "message":
+		result = "Message"
+	}
+	return result
+}
+
+func chunks(s string, chunkSize int) []string {
+	if chunkSize >= len(s) {
+		return []string{s}
+	}
+	var chunks []string
+	chunk := make([]rune, chunkSize)
+	len := 0
+	for _, r := range s {
+		chunk[len] = r
+		len++
+		if len == chunkSize {
+			chunks = append(chunks, string(chunk))
+			len = 0
+		}
+	}
+	if len > 0 {
+		chunks = append(chunks, string(chunk[:len]))
+	}
+	return chunks
+}
+
 func recurseCopyTemplates(base, sub, target string) error {
 	path := filepath.ToSlash(filepath.Join(base, sub))
 	fs, err := templates.ReadDir(path)
@@ -234,16 +325,80 @@ func createSphinx(project, copyright, author, release, path string) error {
 }
 
 var templateFuncMap = template.FuncMap{
-	"now": time.Now,
+	"isnil": func(val interface{}) bool { return val == nil },
+	"now":   time.Now,
 	"replace": func(input, from, to string) string {
 		return strings.Replace(input, from, to, -1)
+	},
+	//"strlen": func(str string) int { return len(str) },
+	"repeat": func(str string, num int) (ret string) {
+		for i := 0; i < num; i++ {
+			ret += str
+		}
+		return
+	},
+	"multiline": func(str string, len int) []string { return chunks(str, len) },
+	"format_duration": func(str string) string {
+		flt, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return str
+		}
+		secs := int(math.Floor(flt))
+		s := secs % 60
+		secs -= s
+		secs /= 60
+		m := secs % 60
+		secs -= m
+		secs /= 60
+		h := secs
+		sf := float64(s) + flt - math.Floor(flt)
+		return fmt.Sprintf("%02d:%02d:%02.3f", h, m, sf)
 	},
 }
 
 func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Writer) error {
 	p := message.NewPrinter(language.German)
 	contents := []RSTTableRow{}
-	bagit.ContentLoadAll(func(content *IngestBagitContent) error {
+	SHA512 := make(map[string]string)
+	files := make([]string, 0)
+	if err := bagit.ContentLoadAll(func(content *IngestBagitContent) error {
+		fname := fmt.Sprintf("file_%v.rst", content.contentId)
+		files = append(files, fname)
+
+		fileTplStr, err := templates.ReadFile("templates/file.rst.tpl")
+		if err != nil {
+			return emperror.Wrapf(err, "cannot open template file.rst.tpl")
+		}
+		file, err := template.New(fname).Funcs(templateFuncMap).Parse(string(fileTplStr))
+		if err != nil {
+			return emperror.Wrapf(err, "cannot parse file.rst.tpl")
+		}
+
+		ifp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, fname), os.O_CREATE|os.O_TRUNC, 0666)
+		if err != nil {
+			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, fname))
+		}
+		var indexer Indexer
+		// indexer.FFProbe.Format.Tags
+		if err := json.Unmarshal([]byte(content.Indexer), &indexer); err != nil {
+			return emperror.Wrapf(err, "cannot unmarshal indexer data - %s", content.Indexer)
+		}
+
+		//indexer.NSRL
+		if err := file.Execute(ifp, struct {
+			Checksums map[string]string
+			Name      string
+			Indexer   Indexer
+		}{
+			Name:      strings.TrimLeft(content.DiskPath, "/"),
+			Checksums: content.Checksums,
+			Indexer:   indexer,
+		}); err != nil {
+			ifp.Close()
+			return emperror.Wrapf(err, "cannot execute file template")
+		}
+		ifp.Close()
+
 		ct := TplBagitContent{
 			OrigPath: content.DiskPath,
 			Mimetype: content.Mimetype,
@@ -258,20 +413,98 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Wri
 			}
 			ct.Dimension += fmt.Sprintf("%vsec", content.Duration)
 		}
+		SHA512[strings.TrimLeft(content.DiskPath, "/")] = content.Checksums["sha512"]
 		contents = append(contents, ct)
 		return nil
-	})
-
-	for name, loc := range bagit.ingest.locations {
-		//todo: something
+	}); err != nil {
+		return emperror.Wrapf(err, "cannot load bagits content for bagit %s", bagit.Name)
 	}
 
+	var locTests = make(map[string][]RSTTableRow)
+	var locTransfer = make(map[string]*Transfer)
+	for _, loc := range bagit.ingest.locations {
+		var tests []RSTTableRow
+		if err := bagit.TestLoadAll(loc, func(test *IngestBagitTestLocation) error {
+			tbt := TplBagitTest{
+				End:     test.end.Format("2006-01-02 15:04:05"),
+				Status:  test.status,
+				Test:    test.test.name,
+				Message: test.message,
+			}
+			tests = append(tests, tbt)
+			return nil
+		}); err != nil {
+			return emperror.Wrapf(err, "cannot load tests for bagit %s", bagit.Name)
+		}
+		locTests[loc.name] = tests
+		transfer, err := loc.LoadTransfer(bagit)
+		if err != nil {
+			return emperror.Wrapf(err, "cannot load transfer of %s to %s", bagit.Name, loc.name)
+		}
+		locTransfer[loc.name] = transfer
+	}
+
+	var test = make(map[string]RSTTable)
+	for key, val := range locTests {
+		test[key] = RSTTable{Data: val}
+	}
+	var transfer = make(map[string]map[string]string)
+	for key, val := range locTransfer {
+		var tmap = make(map[string]string)
+		tmap["Start"] = val.start.Format("2006-01-02 15:04:05")
+		tmap["End"] = val.end.Format("2006-01-02 15:04:05")
+		tmap["Status"] = val.status
+		tmap["Message"] = val.message
+		transfer[key] = tmap
+	}
 	if err := t.Execute(wr, struct {
 		Contents RSTTable
 		Bagit    IngestBagit
-	}{Contents: RSTTable{Data: contents}, Bagit: *bagit}); err != nil {
+		Tests    map[string]RSTTable
+		Transfer map[string]map[string]string
+		SHA512   map[string]string
+		Files    []string
+	}{Contents: RSTTable{Data: contents},
+		Bagit:    *bagit,
+		Tests:    test,
+		Transfer: transfer,
+		SHA512:   SHA512,
+		Files:    files}); err != nil {
 		return emperror.Wrapf(err, "cannot execute bagits template")
 	}
+
+	cntTplStr, err := templates.ReadFile("templates/bagit_contents.rst.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template bagit_contents.rst.tpl")
+	}
+	cnt, err := template.New("cnt.rst").Funcs(templateFuncMap).Parse(string(cntTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse bagit_contents.rst.tpl")
+	}
+
+	cfp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "contents.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, bagit.Name, "contents.rst"))
+	}
+
+	if err := cnt.Execute(cfp, struct {
+		Contents RSTTable
+		Bagit    IngestBagit
+		Tests    map[string]RSTTable
+		Transfer map[string]map[string]string
+		SHA512   map[string]string
+		Files    []string
+	}{Contents: RSTTable{Data: contents},
+		Bagit:    *bagit,
+		Tests:    test,
+		Transfer: transfer,
+		SHA512:   SHA512,
+		Files:    files}); err != nil {
+		cfp.Close()
+		return emperror.Wrapf(err, "cannot execute bagits template")
+	}
+	cfp.Close()
+
 	return nil
 }
 
@@ -421,7 +654,7 @@ func (i *Ingest) Report() error {
 	ifp.Close()
 
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
-		if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/"+bagit.Name); err != nil {
+		if err := createSphinx(bagit.Name, "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/"+bagit.Name); err != nil {
 			return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
 		}
 

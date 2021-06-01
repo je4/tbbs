@@ -173,7 +173,7 @@ func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		loc := &IngestLocation{}
+		loc := &IngestLocation{ingest: i}
 		var p, testIntervalStr string
 		if err := rows.Scan(&loc.id, &loc.name, &p, &loc.params, &loc.encrypted, &loc.quality, &loc.costs, &testIntervalStr); err != nil {
 			if err == sql.ErrNoRows {
@@ -237,7 +237,7 @@ func (i *Ingest) locationStore(loc *IngestLocation) (*IngestLocation, error) {
 func (i *Ingest) transferLoad(loc *IngestLocation, bagit *IngestBagit) (*Transfer, error) {
 	sqlstr := fmt.Sprintf("SELECT transfer_start, transfer_end, status, message FROM %s.bagit_location WHERE bagitid=? AND locationid=?",
 		loc.ingest.schema)
-	row := loc.ingest.db.QueryRow(sqlstr, loc.id, bagit.Id)
+	row := loc.ingest.db.QueryRow(sqlstr, bagit.Id, loc.id)
 	trans := &Transfer{
 		ingest: i,
 		loc:    loc,
@@ -287,8 +287,12 @@ func (i *Ingest) bagitContentStore(ibc *IngestBagitContent) (*IngestBagitContent
 		if ibc.Duration == 0 {
 			_duration.Valid = false
 		}
-		sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
-		res, err := i.db.Exec(sqlstr, ibc.bagit.Id, ibc.ZipPath, ibc.DiskPath, ibc.Filesize, ibc.SHA256, ibc.SHA512, ibc.MD5, _mimetype, _width, _height, _duration, _indexer)
+		chsums, err := json.Marshal(ibc.Checksums)
+		if err != nil {
+			return nil, emperror.Wrapf(err, "cannot marshal checksums %v", ibc.Checksums)
+		}
+		sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, checksums, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
+		res, err := i.db.Exec(sqlstr, ibc.bagit.Id, ibc.ZipPath, ibc.DiskPath, ibc.Filesize, string(chsums), _mimetype, _width, _height, _duration, _indexer)
 		if err != nil {
 			return nil, emperror.Wrapf(err, "cannot insert content of bagit %s at %s", ibc.bagit.Name, sqlstr)
 		}
@@ -423,7 +427,7 @@ func (i *Ingest) bagitLoad(name string) (*IngestBagit, error) {
 	return bagit, nil
 }
 
-func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath string, filesize int64, sha256 string, sha512 string, md5 string, mimetype string, width int64, height int64, duration int64, indexer string) error {
+func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath string, filesize int64, checksums map[string]string, mimetype string, width int64, height int64, duration int64, indexer string) error {
 	var _mimetype, _indexer sql.NullString
 	var _width, _height, _duration sql.NullInt64
 	_indexer.Scan(indexer)
@@ -446,9 +450,13 @@ func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath st
 	if duration == 0 {
 		_duration.Valid = false
 	}
-	sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
-	_, err := i.db.Exec(sqlstr, bagit.Id, zippath, diskpath, filesize, sha256, sha512, md5, mimetype, width, height, duration, indexer)
+	chsums, err := json.Marshal(checksums)
 	if err != nil {
+		return emperror.Wrapf(err, "cannot marshal checksums %v", checksums)
+	}
+
+	sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, checksums, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
+	if _, err := i.db.Exec(sqlstr, bagit.Id, zippath, diskpath, filesize, chsums, mimetype, width, height, duration, indexer); err != nil {
 		return emperror.Wrapf(err, "cannot insert content of bagit %s at %s - %s", bagit.Name, sqlstr)
 	}
 	return nil
@@ -643,17 +651,19 @@ func (i *Ingest) Ingest() error {
 		}
 
 		for _, meta := range metadata {
-			var sha256, sha512, md5, mimetype, indexer string
+			var mimetype, indexer string
 			var width, height, duration int64
-			if str, ok := meta.Checksum["sha256"]; ok {
-				sha256 = str
-			}
-			if str, ok := meta.Checksum["SHA512"]; ok {
-				sha512 = str
-			}
-			if str, ok := meta.Checksum["md5"]; ok {
-				md5 = str
-			}
+			/*
+				if str, ok := meta.Checksum["sha256"]; ok {
+					sha256 = str
+				}
+				if str, ok := meta.Checksum["sha512"]; ok {
+					sha512 = str
+				}
+				if str, ok := meta.Checksum["md5"]; ok {
+					md5 = str
+				}
+			*/
 			if i, ok := meta.Indexer["mimetype"]; ok {
 				mimetype, ok = i.(string)
 			}
@@ -676,7 +686,7 @@ func (i *Ingest) Ingest() error {
 				indexer = string(data)
 			}
 
-			bagit.AddContent(meta.Zippath, meta.Path, meta.Size, sha256, sha512, md5, mimetype, width, height, duration, indexer)
+			bagit.AddContent(meta.Zippath, meta.Path, meta.Size, meta.Checksum, mimetype, width, height, duration, indexer)
 		}
 
 		/*

@@ -5,7 +5,7 @@ type IngestBagitContent struct {
 	contentId               int64
 	ZipPath, DiskPath       string
 	Filesize                int64
-	SHA256, SHA512, MD5     string
+	Checksums               map[string]string
 	Mimetype                string
 	Width, Height, Duration int64
 	Indexer                 string

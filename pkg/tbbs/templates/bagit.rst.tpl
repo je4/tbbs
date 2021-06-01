@@ -1,13 +1,9 @@
-****************
+{{repeat "*" (len .Bagit.Name)}}
 {{.Bagit.Name}}
-****************
+{{repeat "*" (len .Bagit.Name)}}
 
 .. toctree::
 
-
-
-Contents
-========
-.. tabularcolumns:: |l|l|l|r|
-
-{{.Contents.DrawTable }}
+   contents.rst
+{{range $file := .Files}}   {{$file}}
+{{end}}
