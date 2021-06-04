@@ -119,3 +119,32 @@ func (t RSTTable) DrawTable() string {
 	// build table header
 	return str
 }
+
+func (t RSTTable) DrawTableList() string {
+	if t.NumLines() == 0 {
+		return ""
+	}
+	row0 := t.Data[0]
+	cols := row0.Cols()
+
+	var str string
+	for key, col := range cols {
+		star := " "
+		if key == 0 {
+			star = "*"
+		}
+		str += fmt.Sprintf(fmt.Sprintf("   %s - %s\n", star, row0.Title(col)))
+		//str += "\n"
+	}
+	for r := 0; r < t.NumLines(); r++ {
+		for key, col := range cols {
+			star := " "
+			if key == 0 {
+				star = "*"
+			}
+			str += fmt.Sprintf(fmt.Sprintf("   %s - %s\n", star, t.Data[r].Data(col, 0)[0]))
+			//str += "\n"
+		}
+	}
+	return str
+}

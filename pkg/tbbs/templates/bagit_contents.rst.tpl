@@ -2,22 +2,22 @@
 Überblick
 *********
 
-Inhalte
-=======
+Inhalt
+======
 .. tabularcolumns:: |l|l|l|r|
 
-{{.Contents.DrawTable}}
+.. list-table:: Content
+   :header-rows: 1
+
+{{.Contents.DrawTableList}}
 
 Integritätstests
 ================
 
 {{range $loc, $table := .Tests}}
-{{repeat "-" (len (print "Speicher: " $loc))}}
-Speicher: {{$loc}}
-{{repeat "-" (len (print "Speicher: " $loc))}}
-.. tabularcolumns:: |l|l|l|l|
+.. list-table:: {{$loc}}
 
-{{$table.DrawTable}}
+{{$table.DrawTableList}}
 {{end}}
 
 Transfer (File to Storage / Time)
@@ -30,7 +30,7 @@ SHA512 Prüfsummen Übersicht
 ===========================
 {{range $file, $sha512 := .SHA512}}
 {{$file}} [SHA512]::
-{{range $line := (multiline $sha512 32)}}
+{{range $line := (multiline $sha512 64)}}
    {{$line}}{{end}}
 
 {{end}}

@@ -60,6 +60,7 @@ type Indexer struct {
 	FFProbe   ffmpeg_models.Metadata            `json:"ffprobe,omitempty"`
 	Siegfried []siegfried_pronom.Identification `json:"siegfried,omitempty"`
 	Tika      map[string]interface{}            `json:"tika,omitempty"`
+	Exif      map[string]interface{}            `json:"exif,omitempty"`
 }
 
 type TplBagitEntryTest struct {
@@ -383,7 +384,16 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Wri
 		if err := json.Unmarshal([]byte(content.Indexer), &indexer); err != nil {
 			return emperror.Wrapf(err, "cannot unmarshal indexer data - %s", content.Indexer)
 		}
-
+		if indexer.Identify != nil {
+			if imgInt, ok := indexer.Identify["image"]; ok {
+				img, ok := imgInt.(map[string]interface{})
+				if ok {
+					for _, key := range []string{"channelStatistics", "chromaticity", "imageStatistics", "name", "properties"} {
+						delete(img, key)
+					}
+				}
+			}
+		}
 		//indexer.NSRL
 		if err := file.Execute(ifp, struct {
 			Checksums map[string]string
