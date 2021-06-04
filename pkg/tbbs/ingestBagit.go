@@ -2,6 +2,7 @@ package tbbs
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/goph/emperror"
@@ -56,12 +57,13 @@ func (bagit *IngestBagit) GetKey() []byte {
 	if err != nil {
 		return nil
 	}
+	key, _ = hex.DecodeString(string(key))
 	return key
 }
 
 func (bagit *IngestBagit) SetKey(key []byte) error {
 	fname := filepath.Join(bagit.ingest.keyDir, bagit.Name+".key")
-	if err := os.WriteFile(fname, key, 0600); err != nil {
+	if err := os.WriteFile(fname, []byte(fmt.Sprintf("%x", key)), 0600); err != nil {
 		return emperror.Wrapf(err, "cannot write file %s", fname)
 	}
 	return nil
@@ -72,12 +74,13 @@ func (bagit *IngestBagit) GetIV() []byte {
 	if err != nil {
 		return nil
 	}
+	iv, _ = hex.DecodeString(string(iv))
 	return iv
 }
 
 func (bagit *IngestBagit) SetIV(iv []byte) error {
 	fname := filepath.Join(bagit.ingest.keyDir, bagit.Name+".iv")
-	if err := os.WriteFile(fname, iv, 0600); err != nil {
+	if err := os.WriteFile(fname, []byte(fmt.Sprintf("%x", iv)), 0600); err != nil {
 		return emperror.Wrapf(err, "cannot write file %s", fname)
 	}
 	return nil

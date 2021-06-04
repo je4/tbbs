@@ -339,6 +339,7 @@ var templateFuncMap = template.FuncMap{
 		return
 	},
 	"multiline": func(str string, len int) []string { return chunks(str, len) },
+	"blocks":    func(str, filler string, len int) string { chs := chunks(str, len); return strings.Join(chs, filler) },
 	"format_duration": func(str string) string {
 		flt, err := strconv.ParseFloat(str, 64)
 		if err != nil {
@@ -612,11 +613,54 @@ func (i *Ingest) ReportIndex(t *template.Template, wr io.Writer) error {
 	return nil
 }
 
+type keyiv struct{ Key, IV string }
+
+func (i *Ingest) ReportKeys(t *template.Template, wr io.Writer) error {
+	var crypts = make(map[string]keyiv)
+	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
+		var ki keyiv
+		ki.IV = fmt.Sprintf("%x", bagit.GetIV())
+		ki.Key = fmt.Sprintf("%x", bagit.GetKey())
+		crypts[bagit.Name] = ki
+		return nil
+	}); err != nil {
+		return emperror.Wrap(err, "error iterating bagits")
+	}
+	if err := t.Execute(wr, struct {
+		KI map[string]keyiv
+	}{KI: crypts}); err != nil {
+		return emperror.Wrapf(err, "cannot execute index template")
+	}
+	return nil
+}
+
 func (i *Ingest) Report() error {
 	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
 		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
 	}
 
+	//
+	// keys
+	//
+	keysTplStr, err := templates.ReadFile("templates/keys.txt.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template keys.txt.tpl")
+	}
+	keys, err := template.New("keys").Funcs(templateFuncMap).Parse(string(keysTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+	}
+
+	kfp, err := os.OpenFile(filepath.Join(i.keyDir, "keys.txt"), os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.keyDir, "keys.txt"))
+	}
+
+	if err := i.ReportKeys(keys, kfp); err != nil {
+		kfp.Close()
+		return emperror.Wrapf(err, "cannot execute template %s", "templates/keys.txt.tpl")
+	}
+	kfp.Close()
 	//
 	// index
 	//
