@@ -59,8 +59,52 @@ type Indexer struct {
 	Identify  map[string]interface{}            `json:"identify,omitempty"`
 	FFProbe   ffmpeg_models.Metadata            `json:"ffprobe,omitempty"`
 	Siegfried []siegfried_pronom.Identification `json:"siegfried,omitempty"`
-	Tika      map[string]interface{}            `json:"tika,omitempty"`
+	Tika      []map[string]interface{}          `json:"tika,omitempty"`
 	Exif      map[string]interface{}            `json:"exif,omitempty"`
+	Clamav    map[string]string                 `json:"clamav,omitempty"`
+}
+
+type TplBagitKeyVal struct {
+	Key, Value string
+}
+
+func (tbkv TplBagitKeyVal) Cols() []string {
+	return []string{"key", "value"}
+}
+func (tbkv TplBagitKeyVal) FieldSize(col string, maxWidth int) (w int, h int) {
+	data := tbkv.Data(col, maxWidth)
+	h = len(data)
+	if h == 0 {
+		return 0, 0
+	}
+	for l := 0; l < h; l++ {
+		_w := len(data[l])
+		if _w > w {
+			w = _w
+		}
+	}
+	return
+}
+
+func (tbkv TplBagitKeyVal) Data(col string, maxWidth int) []string {
+	data := []string{}
+	switch col {
+	case "key":
+		data = splitLine(tbkv.Key, maxWidth)
+	case "value":
+		data = splitLine(tbkv.Value, maxWidth)
+	}
+	return data
+}
+func (tbkv TplBagitKeyVal) Title(col string) string {
+	result := ""
+	switch col {
+	case "key":
+		result = "Key"
+	case "value":
+		result = "Value"
+	}
+	return result
 }
 
 type TplBagitEntryTest struct {
@@ -255,6 +299,25 @@ func chunks(s string, chunkSize int) []string {
 	return chunks
 }
 
+func linebreak(s string, chunkSize int) []string {
+	if chunkSize >= len(s) {
+		return []string{s}
+	}
+	var lines []string
+	var line = ""
+	words := strings.Split(s, " ")
+	for key, word := range words {
+		if key == 0 || len(line)+len(word) <= chunkSize {
+			line += word + " "
+		} else {
+			lines = append(lines, strings.TrimSpace(line))
+			line = word + " "
+		}
+	}
+	lines = append(lines, strings.TrimSpace(line))
+	return lines
+}
+
 func recurseCopyTemplates(base, sub, target string) error {
 	path := filepath.ToSlash(filepath.Join(base, sub))
 	fs, err := templates.ReadDir(path)
@@ -339,6 +402,7 @@ var templateFuncMap = template.FuncMap{
 		return
 	},
 	"multiline": func(str string, len int) []string { return chunks(str, len) },
+	"linebreak": func(str string, len int) []string { return linebreak(str, len) },
 	"blocks":    func(str, filler string, len int) string { chs := chunks(str, len); return strings.Join(chs, filler) },
 	"format_duration": func(str string) string {
 		flt, err := strconv.ParseFloat(str, 64)
@@ -356,9 +420,11 @@ var templateFuncMap = template.FuncMap{
 		sf := float64(s) + flt - math.Floor(flt)
 		return fmt.Sprintf("%02d:%02d:%02.3f", h, m, sf)
 	},
+	"quote":        func(str interface{}) string { return strings.Trim(strconv.Quote(fmt.Sprintf("%v", str)), `""`) },
+	"string2array": func(str string) []string { return strings.Split(str, "\n") },
 }
 
-func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Writer) error {
+func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWriter io.Writer) error {
 	p := message.NewPrinter(language.German)
 	contents := []RSTTableRow{}
 	SHA512 := make(map[string]string)
@@ -395,7 +461,22 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Wri
 				}
 			}
 		}
+		/*
+			var tikaRows []RSTTableRow
+			if indexer.Tika != nil {
+				for key, val := range indexer.Tika[0] {
+					tikaRows = append(tikaRows, TplBagitKeyVal{
+						Key:   key,
+						Value: fmt.Sprintf("%v", val),
+					})
+				}
+			}
+		*/
+
 		//indexer.NSRL
+		if len(indexer.Tika) == 0 {
+			indexer.Tika = nil
+		}
 		if err := file.Execute(ifp, struct {
 			Checksums map[string]string
 			Name      string
@@ -468,7 +549,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Wri
 		tmap["Message"] = val.message
 		transfer[key] = tmap
 	}
-	if err := t.Execute(wr, struct {
+	if err := t.Execute(reportWriter, struct {
 		Contents RSTTable
 		Bagit    IngestBagit
 		Tests    map[string]RSTTable
@@ -519,13 +600,14 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, wr io.Wri
 	return nil
 }
 
-func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
+func (i *Ingest) ReportBagits(reportBagits, reportSHA512 *template.Template, reportWriter, checksumWriter io.Writer) error {
 	p := message.NewPrinter(language.German)
 	daTest, ok := i.tests["checksum"]
 	if !ok {
 		return fmt.Errorf("cannot find test checksum")
 	}
 
+	sha512s := make(map[string]string)
 	bagits := []RSTTableRow{}
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		var quality, price float64
@@ -534,6 +616,7 @@ func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
 			Size:     p.Sprintf("%d", bagit.Size),
 			Ingested: bagit.Creationdate.Format("2006-01-02"),
 		}
+		sha512s[bagit.Name] = bagit.SHA512
 		var testPassed, testFailed int64
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
@@ -565,11 +648,17 @@ func (i *Ingest) ReportBagits(t *template.Template, wr io.Writer) error {
 		return emperror.Wrap(err, "error iterating bagits")
 	}
 	table := RSTTable{Data: bagits}
-	if err := t.Execute(wr, struct {
+	if err := reportBagits.Execute(reportWriter, struct {
 		BagitTable RSTTable
 		Bagits     []RSTTableRow
 	}{BagitTable: table, Bagits: bagits}); err != nil {
 		return emperror.Wrapf(err, "cannot execute bagits template")
+	}
+	if err := reportSHA512.Execute(checksumWriter, struct {
+		ChecksumName string
+		Checksums    map[string]string
+	}{ChecksumName: "SHA512", Checksums: sha512s}); err != nil {
+		return emperror.Wrapf(err, "cannot execute checksum template")
 	}
 	return nil
 }
@@ -629,7 +718,7 @@ func (i *Ingest) ReportKeys(t *template.Template, wr io.Writer) error {
 	if err := t.Execute(wr, struct {
 		KI map[string]keyiv
 	}{KI: crypts}); err != nil {
-		return emperror.Wrapf(err, "cannot execute index template")
+		return emperror.Wrapf(err, "cannot execute keys template")
 	}
 	return nil
 }
@@ -651,7 +740,7 @@ func (i *Ingest) Report() error {
 		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
 	}
 
-	kfp, err := os.OpenFile(filepath.Join(i.keyDir, "keys.txt"), os.O_CREATE|os.O_TRUNC, 0666)
+	kfp, err := os.OpenFile(filepath.Join(i.keyDir, "keys.txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.keyDir, "keys.txt"))
 	}
@@ -673,7 +762,7 @@ func (i *Ingest) Report() error {
 		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
 	}
 
-	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
 	}
@@ -696,16 +785,30 @@ func (i *Ingest) Report() error {
 		return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
 	}
 
-	ifp, err = os.OpenFile(filepath.Join(i.reportDir, "main", "bagits.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	ifp, err = os.OpenFile(filepath.Join(i.reportDir, "main", "bagits.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "bagits.rst"))
+		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagits.rst"))
 	}
 
-	if err := i.ReportBagits(bagits, ifp); err != nil {
-		ifp.Close()
-		return emperror.Wrapf(err, "cannot execute template %s", "templates/bagits.rst.tpl")
+	checksumTplStr, err := templates.ReadFile("templates/bagit_checksum.txt.tpl")
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open template bagits.rst.tpl")
 	}
-	ifp.Close()
+	checksums, err := template.New("checksums").Funcs(templateFuncMap).Parse(string(checksumTplStr))
+	if err != nil {
+		return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+	}
+
+	cfp, err := os.OpenFile(filepath.Join(i.reportDir, "", "bagit_checksum.txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	if err != nil {
+		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagit_checksum.txt"))
+	}
+
+	if err := i.ReportBagits(bagits, checksums, ifp, cfp); err != nil {
+		cfp.Close()
+		return emperror.Wrapf(err, "cannot execute template %s", "templates/bagit_checksum.txt.tpl")
+	}
+	cfp.Close()
 
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		if err := createSphinx(bagit.Name, "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/"+bagit.Name); err != nil {

@@ -8,4 +8,4 @@ $(SUBDIRS):
 	cp -f $@/_build/latex/*.pdf .
 	$(MAKE) -C $@ clean
 
-.PHONY: $(TOPTARGETS) $(SUBDIRS)
+.PHONY: $(TOPTARGETS)

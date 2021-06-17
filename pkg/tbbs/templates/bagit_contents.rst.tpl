@@ -4,6 +4,13 @@
 
 Inhalt
 ======
+
+.. code-block::
+   :caption: Baginfo
+
+{{range $key, $line := (string2array .Bagit.Baginfo)}}   {{$line}}
+{{end}}
+
 .. tabularcolumns:: |l|l|l|r|
 
 .. list-table:: Content
@@ -14,7 +21,14 @@ Inhalt
 Integritätstests
 ================
 
+.. tabularcolumns::
+   |m{0.10\linewidth}|m{0.20\linewidth}|m{0.10\linewidth}|m{0.60\linewidth}|
+
+
 {{range $loc, $table := .Tests}}
+.. tabularcolumns::
+   |m{0.10\textwidth}|m{0.20\textwidth}|m{0.10\textwidth}|m{0.60\textwidth}|
+
 .. list-table:: {{$loc}}
 
 {{$table.DrawTableList}}

@@ -67,7 +67,7 @@ func (t RSTTable) DrawTable() string {
 	}
 	row0 := t.Data[0]
 	cols := row0.Cols()
-	var maxWidth = 10 * 100 / len(cols)
+	var maxWidth = 100 / len(cols)
 	widths := make(map[string]int)
 	for _, col := range cols {
 		widths[col] = t.ColWidth(col, maxWidth)
@@ -78,7 +78,7 @@ func (t RSTTable) DrawTable() string {
 			//s += "+"
 			//format := fmt.Sprintf("%% %s%dv+", fill, widths[col])
 			//s += fmt.Sprintf(format, "")
-			s += strutil.PadLeft("+", widths[col]+1, fill)
+			s += strutil.PadLeft("+", widths[col]+2, fill)
 		}
 		return s + "\n"
 	}
@@ -97,7 +97,8 @@ func (t RSTTable) DrawTable() string {
 				if l < len(data) {
 					txt = data[l]
 				}
-				s += fmt.Sprintf(fmt.Sprintf("%% %ds|", widths[col]), txt)
+				s += fmt.Sprintf(fmt.Sprintf("%% %ds |", widths[col]), txt)
+				//s += strutil.PadRight(txt, widths[col], ' ') + " |"
 			}
 			s += "\n"
 		}
@@ -108,7 +109,7 @@ func (t RSTTable) DrawTable() string {
 	str := tableLine('-')
 	str += "|"
 	for _, col := range cols {
-		str += fmt.Sprintf(fmt.Sprintf("%% %ds|", widths[col]), row0.Title(col))
+		str += fmt.Sprintf(fmt.Sprintf("%% %ds |", widths[col]), row0.Title(col))
 	}
 	str += "\n"
 	str += tableLine('=')
@@ -142,7 +143,14 @@ func (t RSTTable) DrawTableList() string {
 			if key == 0 {
 				star = "*"
 			}
-			str += fmt.Sprintf(fmt.Sprintf("   %s - %s\n", star, t.Data[r].Data(col, 0)[0]))
+			txt := t.Data[r].Data(col, 0)
+			dash := "-"
+			for _, v := range txt {
+				str += fmt.Sprintf("   %s %s %s\n", star, dash, v)
+				star = " "
+				dash = " "
+			}
+			//str += fmt.Sprintf(fmt.Sprintf("   %s - %s\n", star, [0]))
 			//str += "\n"
 		}
 	}

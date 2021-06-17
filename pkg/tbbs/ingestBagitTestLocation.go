@@ -75,7 +75,7 @@ func (ibl *IngestBagitTestLocation) checksumFile() ([]byte, error) {
 	}
 	fp, err := os.OpenFile(path, os.O_RDONLY, 0666)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannnot open %s", path)
+		return nil, emperror.Wrapf(err, "cannot open %s", path)
 	}
 	defer fp.Close()
 	shaSink := sha512.New()
@@ -98,7 +98,9 @@ func (ibl *IngestBagitTestLocation) Test() error {
 		return fmt.Errorf("invalid test %s", ibl.test.name)
 	}
 	ibl.start = time.Now()
+
 	var targetChecksum, checksum string
+
 	switch ibl.location.path.Scheme {
 	case "sftp":
 		checksumBytes, err := ibl.checksumSFTP()
@@ -106,11 +108,6 @@ func (ibl *IngestBagitTestLocation) Test() error {
 			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.Name, ibl.location.name, err)
 		} else {
 			checksum = fmt.Sprintf("%x", checksumBytes)
-			if ibl.location.IsEncrypted() {
-				targetChecksum = ibl.bagit.SHA512_aes
-			} else {
-				targetChecksum = ibl.bagit.SHA512
-			}
 		}
 	case "file":
 		checksumBytes, err := ibl.checksumFile()
@@ -118,20 +115,25 @@ func (ibl *IngestBagitTestLocation) Test() error {
 			ibl.message = fmt.Sprintf("cannot get checksum of %s at %s: %v", ibl.bagit.Name, ibl.location.name, err)
 		} else {
 			checksum = fmt.Sprintf("%x", checksumBytes)
-			if ibl.location.IsEncrypted() {
-				targetChecksum = ibl.bagit.SHA512_aes
-			} else {
-				targetChecksum = ibl.bagit.SHA512
-			}
 		}
 	default:
 		return fmt.Errorf("cannot handle location %s with protocol %s", ibl.location.name, ibl.location.path.Scheme)
 	}
-	if checksum == targetChecksum {
+
+	if ibl.location.IsEncrypted() {
+		targetChecksum = ibl.bagit.SHA512_aes
+	} else {
+		targetChecksum = ibl.bagit.SHA512
+	}
+
+	if checksum == targetChecksum && targetChecksum != "" {
 		ibl.status = "passed"
 	} else {
 		ibl.status = "failed"
-		ibl.message = fmt.Sprintf("invalid checksum %s", checksum)
+		if len(ibl.message) > 0 {
+			ibl.message += " // "
+		}
+		ibl.message += fmt.Sprintf("invalid checksum %s", checksum)
 	}
 	ibl.end = time.Now()
 	if err := ibl.Store(); err != nil {

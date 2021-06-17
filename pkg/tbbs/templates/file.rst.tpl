@@ -11,12 +11,17 @@ Checksums
 
 {{end}}
 
-Fileinfo
---------
+{{if gt (len .Indexer.Errors) 0}}
+Errors
+------
 
+{{range $key, $val := .Indexer.Errors}}{{$key}}
+| {{quote $val}}
+{{end}}
+{{end}}
 {{if gt (len .Indexer.NSRL) 0}}
 NSRL
-^^^^
+----
 {{range $k, $nsrl := .Indexer.NSRL}}
 .. list-table:: NSRL #{{$k}}
 
@@ -42,7 +47,7 @@ NSRL
 {{end}}
 {{if gt (len .Indexer.Siegfried) 0}}
 Siegfried
-^^^^^^^^^
+---------
 {{range $idx := .Indexer.Siegfried}}
 | Pronom ID: {{$idx.ID}}
 | Name: {{$idx.Name}}
@@ -51,7 +56,7 @@ Siegfried
 {{end}}
 {{if gt (len .Indexer.Identify) 0}}
 ImageMagick
-^^^^^^^^^^^
+-----------
 
 .. list-table:: Identify
 
@@ -59,15 +64,25 @@ ImageMagick
      - {{$val}}
 {{end}}
 {{end}}
+{{if gt (len .Indexer.Clamav) 0}}
+Clamav
+------
+
+.. list-table:: Clamav
+
+{{range $key, $val := .Indexer.Clamav}}   * - {{$key}}
+     - {{quote $val}}
+{{end}}
+{{end}}
 {{if not (eq .Indexer.FFProbe.Format.FormatName "")}}
 FFProbe
-^^^^^^^
+-------
 
 {{if gt (len .Indexer.FFProbe.Format.Tags) 0}}
 .. list-table:: Metadata
 
 {{range $key, $val := .Indexer.FFProbe.Format.Tags}}   * - {{$key}}
-     - {{$val}}
+     - {{quote $val}}
 {{end}}
 {{end}}
 
@@ -142,7 +157,7 @@ FFProbe
 {{end}}
 {{if gt (len .Indexer.Exif) 0}}
 Exif
-^^^^
+----
 
 .. list-table::
 
@@ -152,11 +167,9 @@ Exif
 {{end}}
 {{if gt (len .Indexer.Tika) 0}}
 Tika
-^^^^
+----
 
-.. list-table:: Meta
-
-{{range $key, $val := .Indexer.Tika}}   * - {{$key}}
-     - {{$val}}
-{{end}}
+{{range $key, $val := (index .Indexer.Tika 0)}}:{{$key}}:
+{{range $key,$line := (linebreak (quote $val) 60)}}  {{$line}}
+{{end}}{{end}}
 {{end}}
