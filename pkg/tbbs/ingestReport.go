@@ -442,7 +442,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 			return emperror.Wrapf(err, "cannot parse file.rst.tpl")
 		}
 
-		ifp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, fname), os.O_CREATE|os.O_TRUNC, 0666)
+		ifp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, fname), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 		if err != nil {
 			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, fname))
 		}
@@ -574,7 +574,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 		return emperror.Wrapf(err, "cannot parse bagit_contents.rst.tpl")
 	}
 
-	cfp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "contents.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+	cfp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "contents.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
 		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, bagit.Name, "contents.rst"))
 	}
@@ -724,6 +724,7 @@ func (i *Ingest) ReportKeys(t *template.Template, wr io.Writer) error {
 }
 
 func (i *Ingest) Report() error {
+	i.logger.Infof("creating sphinx folder")
 	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
 		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
 	}
@@ -764,7 +765,7 @@ func (i *Ingest) Report() error {
 
 	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open fiel %s", filepath.Join(i.reportDir, "index.rst"))
+		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
 	}
 
 	if err := i.ReportIndex(index, ifp); err != nil {
@@ -827,7 +828,7 @@ func (i *Ingest) Report() error {
 			return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
 		}
 
-		ifp, err = os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "index.rst"), os.O_CREATE|os.O_TRUNC, 0666)
+		ifp, err = os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "index.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 		if err != nil {
 			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
 		}
