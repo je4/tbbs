@@ -9,6 +9,8 @@ import (
 	"github.com/dgraph-io/badger"
 	"github.com/goph/emperror"
 	"github.com/je4/bagarc/v2/pkg/bagit"
+	xssh "github.com/je4/sftp/v2/pkg/ssh"
+	xstream "github.com/je4/sftp/v2/pkg/stream"
 	"github.com/op/go-logging"
 	"io/fs"
 	"io/ioutil"
@@ -33,11 +35,15 @@ type Ingest struct {
 	initLoc     *IngestLocation
 	tests       map[string]*IngestTest
 	locations   map[string]*IngestLocation
-	sftp        *SFTP
+	sftp        *xssh.SFTP
 }
 
 func NewIngest(tempDir, keyDir, initLocName, reportDir string, db *sql.DB, dbschema string, privateKeys []string, logger *logging.Logger) (*Ingest, error) {
-	sftp, err := NewSFTP(privateKeys, "", "", logger)
+	rsc, err := xstream.NewReadStreamQueue()
+	if err != nil {
+		return nil, emperror.Wrap(err, "cannot create read stream queue")
+	}
+	sftp, err := xssh.NewSFTP(privateKeys, "", "", 50, 64, 128*1024, rsc, logger)
 	if err != nil {
 		return nil, emperror.Wrap(err, "cannot create sftp")
 	}
@@ -603,7 +609,7 @@ func (i *Ingest) Ingest() error {
 		metaWriter := bufio.NewWriter(&metaBytes)
 		var baginfoBytes bytes.Buffer
 		baginfoWriter := bufio.NewWriter(&baginfoBytes)
-		if err := checker.Check(metaWriter, baginfoWriter); err != nil {
+		if err := checker.Check(metaWriter); err != nil {
 			return emperror.Wrapf(err, "error checking file %v", bagitPath)
 		}
 		// paranoia
@@ -720,51 +726,6 @@ func (i *Ingest) Check() error {
 	}); err != nil {
 		return emperror.Wrap(err, "error iterating bagits")
 	}
-	return nil
-}
-
-func (i *Ingest) DELETE_Encrypt(name, bagitPath string) error {
-	if _, err := os.Stat(bagitPath + "." + encExt); err == nil {
-		return fmt.Errorf("encrypted bagit file %s.%s already exists", name, encExt)
-	} else if !os.IsNotExist(err) {
-		return emperror.Wrapf(err, "error checking existence of %s.%s", name, encExt)
-	}
-
-	// create checksum of bagit
-	//		bi.logger.Infof("calculating checksum of %s", bagitFile)
-	//		checksum := SHA512.New()
-
-	fin, err := os.Open(bagitPath)
-	if err != nil {
-		return emperror.Wrapf(err, "cannot open %s", bagitPath)
-	}
-	defer fin.Close()
-	fout, err := os.OpenFile(bagitPath+"."+encExt, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		return emperror.Wrapf(err, "cannot create encrypted bagit %s.%s", bagitPath, encExt)
-	}
-	defer fout.Close()
-	if err != nil {
-		return emperror.Wrapf(err, "cannot open %s.%s", bagitPath, encExt)
-	}
-	defer fout.Close()
-
-	key, iv, hashBytes, err := Encrypt(fin, fout)
-	if err != nil {
-		return emperror.Wrapf(err, "cannot encrypt %s", bagitPath)
-	}
-
-	os.WriteFile(fmt.Sprintf("%s/%s.%s.key", i.keyDir, name, encExt), []byte(fmt.Sprintf("%x", key)), 0600)
-	os.WriteFile(fmt.Sprintf("%s/%s.%s.iv", i.keyDir, name, encExt), []byte(fmt.Sprintf("%x", iv)), 0600)
-
-	i.logger.Infof("key: %x, iv: %x, hash: %x", key, iv, hashBytes)
-	i.logger.Infof("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K '%x' -iv '%x'", bagitPath, encExt, bagitPath, key, iv)
-
-	/*
-		if _, err := io.Copy(checksum, fin); err != nil {
-			return emperror.Wrapf(err, "cannot calculate checksum of %s", bagitFile)
-		}
-	*/
 	return nil
 }
 

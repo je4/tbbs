@@ -62,4 +62,4 @@ html_theme = 'alabaster'
 html_static_path = ['_static']
 
 
-latex_engine = 'xelatex'
+# latex_engine = 'xelatex'

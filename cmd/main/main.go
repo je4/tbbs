@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	_ "github.com/dgraph-io/badger"
+	_ "github.com/dgraph-io/badger/v3"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/je4/bagarc/v2/pkg/bagit"
 	"github.com/je4/sshtunnel/v2/pkg/sshtunnel"
@@ -121,6 +121,16 @@ func main() {
 		}
 		if err := i.Check(); err != nil {
 			logger.Fatalf("cannot ingest: %v", err)
+			return
+		}
+		if err := i.Report(); err != nil {
+			logger.Fatalf("cannot create report: %v", err)
+			return
+		}
+	case "report":
+		i, err := tbbs.NewIngest(conf.Tempdir, conf.KeyDir, conf.IngestLocation, conf.Reportdir, db, conf.DB.Schema, conf.PrivateKey, logger)
+		if err != nil {
+			logger.Fatalf("cannot create BagitIngest: %v", err)
 			return
 		}
 		if err := i.Report(); err != nil {

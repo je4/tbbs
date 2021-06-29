@@ -1,16 +1,18 @@
 package tbbs
 
 import (
-	"context"
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
 	"github.com/blend/go-sdk/crypto"
 	"github.com/goph/emperror"
-	"github.com/machinebox/progress"
-	"github.com/tidwall/transform"
+	xstream "github.com/je4/sftp/v2/pkg/stream"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -52,16 +54,16 @@ func (ibl *IngestBagitLocation) Exists() (bool, error) {
 	}
 }
 
-func (ibl *IngestBagitLocation) createEncrypt(src io.Reader) ([]byte, []byte, io.Reader, error) {
+func (ibl *IngestBagitLocation) createEncrypt() (*xstream.EncryptReader, error) {
 	var err error
 	key := ibl.bagit.GetKey()
 	if key == nil {
 		key, err = crypto.CreateKey(crypto.DefaultKeySize)
 		if err != nil {
-			return nil, nil, nil, emperror.Wrap(err, "cannot generate key")
+			return nil, emperror.Wrap(err, "cannot generate key")
 		}
 		if err := ibl.bagit.SetKey(key); err != nil {
-			return nil, nil, nil, emperror.Wrap(err, "cannot write key")
+			return nil, emperror.Wrap(err, "cannot write key")
 		}
 	}
 	iv := ibl.bagit.GetIV()
@@ -69,26 +71,22 @@ func (ibl *IngestBagitLocation) createEncrypt(src io.Reader) ([]byte, []byte, io
 		iv = make([]byte, aes.BlockSize)
 		_, err = rand.Read(iv)
 		if err != nil {
-			return nil, nil, nil, emperror.Wrap(err, "cannot create iv")
+			return nil, emperror.Wrap(err, "cannot create iv")
 		}
 		if err := ibl.bagit.SetIV(iv); err != nil {
-			return nil, nil, nil, emperror.Wrap(err, "cannot write iv")
+			return nil, emperror.Wrap(err, "cannot write iv")
 		}
 	}
-	enc, err := CreateEncoder(src, key, iv)
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, nil, nil, emperror.Wrap(err, "cannot create stream encrypter")
+		ibl.status = "error"
+		ibl.Store()
+		return nil, emperror.Wrap(err, "cannot create cipher block")
 	}
-	var rbuf = make([]byte, 4096)
-	r := transform.NewTransformer(func() ([]byte, error) {
-		var err error
-		n, err := enc.Read(rbuf)
-		if err != nil {
-			return nil, err
-		}
-		return rbuf[:n], nil
-	})
-	return key, iv, r, nil
+	ctrStream := cipher.NewCTR(block, iv)
+	mac := hmac.New(sha256.New, key)
+	er := xstream.NewEncryptReader(block, ctrStream, mac, iv, ibl.ingest.logger)
+	return er, nil
 }
 
 func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
@@ -118,6 +116,52 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 	ibl.start = time.Now()
 	ibl.message = ""
 	var message string
+
+	src, err := os.OpenFile(sourcePath, os.O_RDONLY, 0666)
+	if err != nil {
+		ibl.status = "error"
+		ibl.Store()
+		return emperror.Wrapf(err, "cannot open source file %s", sourcePath)
+	}
+	defer src.Close()
+
+	rsc, err := xstream.NewReadStreamQueue()
+	if err != nil {
+		ibl.status = "error"
+		ibl.Store()
+		return emperror.Wrap(err, "cannot create read stream queue")
+	}
+
+	if ibl.location.IsEncrypted() {
+		/* Encryption */
+		er, err := ibl.createEncrypt()
+		if err != nil {
+			return emperror.Wrap(err, "cannot create encryption pipeline")
+		}
+		rsc.Append(er)
+	}
+
+	/* ProgressReader Bar */
+	stat, err := src.Stat()
+	if err != nil {
+		return emperror.Wrapf(err, "cannot stat %s", sourcePath)
+	}
+	rsc.Append(xstream.NewProgressReaderWriter(
+		stat.Size(),
+		time.Second,
+		func(remaining time.Duration, percent float64, estimated time.Time, complete bool) {
+			if !complete {
+				fmt.Printf("\r% 3d%% - % 3dsec   ", int(math.Round(percent)+1), int(math.Round(float64(estimated.Sub(time.Now()))/float64(time.Second))))
+			} else {
+				fmt.Print("\r                                \r")
+			}
+		}),
+	)
+
+	/* ChecksumReaderWriter */
+	hashSha512 := sha512.New()
+	rsc.Append(xstream.NewChecksumReaderWriter(hashSha512, ibl.ingest.logger))
+
 	switch strings.ToLower(ibl.location.path.Scheme) {
 	case "file":
 		// build target path
@@ -138,28 +182,11 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 			return emperror.Wrapf(err, "cannot create destination file %s", targetPath)
 		}
 		defer dest.Close()
-		src, err := os.OpenFile(sourcePath, os.O_RDONLY, 0666)
-		if err != nil {
-			ibl.status = "error"
-			ibl.Store()
-			return emperror.Wrapf(err, "cannot open source file %s", sourcePath)
-		}
-		defer src.Close()
 		ibl.ingest.logger.Infof("copying %s --> %s", sourcePath, targetPath)
-		var r io.Reader
 		if ibl.location.IsEncrypted() {
-			//			var key, iv []byte
-			_, _, r, err = ibl.createEncrypt(src)
-			if err != nil {
-				return emperror.Wrap(err, "cannot create encryption pipeline")
-			}
 			message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K '`cat %s/%s.key`' -iv '`cat %s/%s.iv`'", ibl.bagit.Name, encExt, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name)
-		} else {
-			r = src
 		}
-		shaSink := sha512.New()
-		w := io.MultiWriter(dest, shaSink)
-		size, err := io.Copy(w, r)
+		size, err := io.Copy(dest, rsc.StartReader(src))
 		if err != nil {
 			ibl.status = "error"
 			ibl.Store()
@@ -169,21 +196,6 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 		ibl.ingest.logger.Infof("copying %v bytes", size)
 		if message != "" {
 			ibl.ingest.logger.Infof(message)
-		}
-		sha512Str := fmt.Sprintf("%x", shaSink.Sum(nil))
-		if ibl.location.IsEncrypted() {
-			if ibl.bagit.SHA512_aes == "" {
-				ibl.bagit.SHA512_aes = sha512Str
-				ibl.bagit.Store()
-			} else {
-				if sha512Str != ibl.bagit.SHA512_aes {
-					return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512_aes, sha512Str)
-				}
-			}
-		} else {
-			if sha512Str != ibl.bagit.SHA512 {
-				return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512, sha512Str)
-			}
 		}
 	case "sftp":
 		targetUrlStr := strings.TrimRight(ibl.location.path.String(), "/") + "/" + ibl.bagit.Name
@@ -198,44 +210,7 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 		}
 		ibl.ingest.logger.Infof("copying %s --> %s", sourcePath, targetUrl.String())
 
-		src, err := os.OpenFile(sourcePath, os.O_RDONLY, 0666)
-		if err != nil {
-			ibl.status = "error"
-			ibl.Store()
-			return emperror.Wrapf(err, "cannot open source file %s", sourcePath)
-		}
-		defer src.Close()
-
-		stat, err := src.Stat()
-		if err != nil {
-			return emperror.Wrapf(err, "cannot stat %s", sourcePath)
-		}
-		size := stat.Size()
-		src2 := progress.NewReader(src)
-
-		// Start a goroutine printing progress
-		go func() {
-			progressChan := progress.NewTicker(context.Background(), src2, size, 2*time.Second)
-			for p := range progressChan {
-				ibl.ingest.logger.Infof("uploading %s - %v remaining...", ibl.bagit.Name, p.Remaining().Round(time.Second))
-			}
-			ibl.ingest.logger.Infof("uploading %s - completed", ibl.bagit.Name)
-		}()
-
-		var r io.Reader
-		if ibl.location.IsEncrypted() {
-			//var key, iv []byte
-			_, _, r, err = ibl.createEncrypt(src2)
-			if err != nil {
-				return emperror.Wrap(err, "cannot create encryption pipeline")
-			}
-			//message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out /tmp/%s -K '%x' -iv '%x'", ibl.bagit.Name, encExt, ibl.bagit.Name, string(key), string(iv))
-			message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K '`cat %s/%s.key`' -iv '`cat %s/%s.iv`'", ibl.bagit.Name, encExt, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name)
-		} else {
-			r = src2
-		}
-
-		size, sha512Str, err := ibl.ingest.sftp.Put(targetUrl, ibl.location.path.User.Username(), r)
+		size, err := ibl.ingest.sftp.Put(targetUrl, rsc.StartReader(src))
 		if err != nil {
 			ibl.status = "error"
 			ibl.Store()
@@ -246,22 +221,23 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 		if message != "" {
 			ibl.ingest.logger.Infof(message)
 		}
-		if ibl.location.IsEncrypted() {
-			if ibl.bagit.SHA512_aes == "" {
-				ibl.bagit.SHA512_aes = sha512Str
-				ibl.bagit.Store()
-			} else {
-				if sha512Str != ibl.bagit.SHA512_aes {
-					return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512_aes, sha512Str)
-				}
-			}
-		} else {
-			if sha512Str != ibl.bagit.SHA512 {
-				return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512, sha512Str)
-			}
-		}
 	default:
 		return fmt.Errorf("invalid target scheme %s", ibl.location.path.Scheme)
+	}
+	sha512Str := fmt.Sprintf("%x", hashSha512.Sum(nil))
+	if ibl.location.IsEncrypted() {
+		if ibl.bagit.SHA512_aes == "" {
+			ibl.bagit.SHA512_aes = sha512Str
+			ibl.bagit.Store()
+		} else {
+			if sha512Str != ibl.bagit.SHA512_aes {
+				return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512_aes, sha512Str)
+			}
+		}
+	} else {
+		if sha512Str != ibl.bagit.SHA512 {
+			return emperror.Wrapf(err, "invalid checksum %s != %s", ibl.bagit.SHA512, sha512Str)
+		}
 	}
 
 	ibl.end = time.Now()
