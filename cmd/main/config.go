@@ -3,42 +3,25 @@ package main
 import (
 	"github.com/BurntSushi/toml"
 	"github.com/goph/emperror"
-	"net"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
 
 type Endpoint struct {
-	Host string
-	Port int
-}
-
-func (e *Endpoint) UnmarshalText(text []byte) error {
-	var err error
-	var port string
-	e.Host, port, err = net.SplitHostPort(string(text))
-	if err == nil {
-		var longPort int64
-		longPort, err = strconv.ParseInt(port, 10, 64)
-		if err != nil {
-			return emperror.Wrapf(err, "cannot parse port %s of %s", port, string(text))
-		}
-		e.Port = int(longPort)
-	}
-	return err
+	Host string `toml:"host"`
+	Port int    `toml:"port"`
 }
 
 type Forward struct {
-	Local  *Endpoint
-	Remote *Endpoint
+	Local  Endpoint `toml:"local"`
+	Remote Endpoint `toml:"remote"`
 }
 
 type SSHTunnel struct {
 	User       string             `toml:"user"`
 	PrivateKey string             `toml:"privatekey"`
-	Endpoint   *Endpoint          `toml:"endpoint"`
+	Endpoint   Endpoint           `toml:"endpoint"`
 	Forward    map[string]Forward `toml:"forward"`
 }
 

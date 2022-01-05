@@ -5,8 +5,8 @@ import (
 	_ "github.com/dgraph-io/badger/v3"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/je4/bagarc/v2/pkg/bagit"
-	"github.com/je4/sshtunnel/v2/pkg/sshtunnel"
 	"github.com/je4/tbbs/v2/pkg/tbbs"
+	"github.com/je4/utils/v2/pkg/ssh"
 	flag "github.com/spf13/pflag"
 	"log"
 	"time"
@@ -44,27 +44,28 @@ func main() {
 	logger, lf := bagit.CreateLogger("bagit", conf.Logfile, nil, conf.Loglevel, conf.Logformat)
 	defer lf.Close()
 
+	var tunnels []*ssh.SSHtunnel
 	for name, tunnel := range conf.Tunnel {
 		logger.Infof("starting tunnel %s", name)
 
-		forwards := make(map[string]*sshtunnel.SourceDestination)
-		for fwname, fw := range tunnel.Forward {
-			forwards[fwname] = &sshtunnel.SourceDestination{
-				Local: &sshtunnel.Endpoint{
+		forwards := make(map[string]*ssh.SourceDestination)
+		for fwName, fw := range tunnel.Forward {
+			forwards[fwName] = &ssh.SourceDestination{
+				Local: &ssh.Endpoint{
 					Host: fw.Local.Host,
 					Port: fw.Local.Port,
 				},
-				Remote: &sshtunnel.Endpoint{
+				Remote: &ssh.Endpoint{
 					Host: fw.Remote.Host,
 					Port: fw.Remote.Port,
 				},
 			}
 		}
 
-		t, err := sshtunnel.NewSSHTunnel(
+		t, err := ssh.NewSSHTunnel(
 			tunnel.User,
 			tunnel.PrivateKey,
-			&sshtunnel.Endpoint{
+			&ssh.Endpoint{
 				Host: tunnel.Endpoint.Host,
 				Port: tunnel.Endpoint.Port,
 			},
@@ -76,11 +77,16 @@ func main() {
 			return
 		}
 		if err := t.Start(); err != nil {
-			logger.Errorf("cannot create sshtunnel %v - %v", t.String(), err)
+			logger.Errorf("cannot create configfile %v - %v", t.String(), err)
 			return
 		}
-		defer t.Close()
+		tunnels = append(tunnels, t)
 	}
+	defer func() {
+		for _, t := range tunnels {
+			t.Close()
+		}
+	}()
 	// if tunnels are made, wait until connection is established
 	if len(conf.Tunnel) > 0 {
 		time.Sleep(2 * time.Second)

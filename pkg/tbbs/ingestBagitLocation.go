@@ -184,7 +184,7 @@ func (ibl *IngestBagitLocation) Transfer(source *IngestBagitLocation) error {
 		defer dest.Close()
 		ibl.ingest.logger.Infof("copying %s --> %s", sourcePath, targetPath)
 		if ibl.location.IsEncrypted() {
-			message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K '`cat %s/%s.key`' -iv '`cat %s/%s.iv`'", ibl.bagit.Name, encExt, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name)
+			message = fmt.Sprintf("decrypt using openssl: \n openssl enc -aes-256-ctr -nosalt -d -in %s.%s -out %s -K \"`cat %s/%s.key`\" -iv \"`cat %s/%s.iv`\"", ibl.bagit.Name, encExt, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name, ibl.ingest.keyDir, ibl.bagit.Name)
 		}
 		size, err := io.Copy(dest, rsc.StartReader(src))
 		if err != nil {
