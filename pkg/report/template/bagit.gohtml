@@ -1,0 +1,55 @@
+<html>{{ $this := . }}
+<head>
+    <title>TBBS - Report - {{.Name}}</title>
+
+    <!-- link href="static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css" -->
+    <link href="../static/font/inter/inter.css" rel="stylesheet" type="text/css">
+    <link href="../static/css/tbbs.css" rel="stylesheet" type="text/css">
+    <script src="../static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
+</head>
+<body>
+<h1>TBBS - The boring bagit store</h1>
+<h2>{{.Name}}</h2>
+
+<table style="margin-left: auto; margin-right: auto;">
+    <tr>
+        <td class="border">Size</td><td class="border">{{formatSize .Size}} ({{formatInt64 .Size}} Byte)</td>
+    </tr>
+    <tr>
+        <td class="border">Files</td><td class="border">{{formatInt (len .Files)}}</td>
+    </tr>
+    <tr>
+        <td class="border">SHA512</td><td class="border" style="overflow-wrap: anywhere;">{{.SHA512}}</td>
+    </tr>
+    <tr>
+        <td class="border">SHA512 Encrypted</td><td class="border" style="overflow-wrap: anywhere;">{{.SHA512_AES}}</td>
+    </tr>
+    <tr>
+        <td  class="border">Health</td><td class="border{{if .HealthOK}} ok{{else}} alert{{end}}">{{if .HealthOK}}OK{{else}}Failed{{end}}</td>
+    </tr>
+</table>
+<h3>Ingest</h3>
+
+<table style="">
+    <tr>
+        <th class="border">Location</th>
+        <th class="border">Start</th>
+        <th class="border">Duration</th>
+        <th class="border">Encrypted</th>
+        <th class="border">Status</th>
+        <th class="border">Message</th>
+    </tr>
+    {{range $ingest := .Ingest}}
+        <tr>
+            <td class="border">{{$ingest.Location}}</td>
+            <td class="border">{{$ingest.TransferStart | date "2006-01-02 15:04:05"}}</td>
+            <td class="border">{{$ingest.TransferDuration | duration }}</td>
+            <td class="border">{{if $ingest.Encrypted}}yes{{else}}no{{end}}</td>
+            <td class="border">{{$ingest.Status}}</td>
+            <td class="border" style="overflow-wrap: anywhere;">{{$ingest.Message}}</td>
+        </tr>
+    {{end}}
+</table>
+<h3>Check</h3>
+</body>
+</html>

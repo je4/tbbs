@@ -4,9 +4,9 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"github.com/goph/emperror"
 	ffmpeg_models "github.com/je4/goffmpeg/models"
 	"github.com/je4/indexer/pkg/indexer"
+	"github.com/pkg/errors"
 	siegfried_pronom "github.com/richardlehane/siegfried/pkg/pronom"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -322,7 +322,7 @@ func recurseCopyTemplates(base, sub, target string) error {
 	path := filepath.ToSlash(filepath.Join(base, sub))
 	fs, err := templates.ReadDir(path)
 	if err != nil {
-		return emperror.Wrapf(err, "no reportbase compiled into executable")
+		return errors.Wrapf(err, "no reportbase compiled into executable")
 	}
 	for _, fe := range fs {
 		subPath := filepath.ToSlash(filepath.Join(sub, fe.Name()))
@@ -330,27 +330,27 @@ func recurseCopyTemplates(base, sub, target string) error {
 			dir := filepath.Join(target, fe.Name())
 			if _, err := os.Stat(dir); err != nil {
 				if err := os.Mkdir(dir, 0755); err != nil {
-					return emperror.Wrapf(err, "cannot create folder %s", filepath.Join(target, fe.Name()))
+					return errors.Wrapf(err, "cannot create folder %s", filepath.Join(target, fe.Name()))
 				}
 			}
 
 			if err := recurseCopyTemplates(base, subPath, target); err != nil {
-				return emperror.Wrapf(err, "cannot copy template to %s", subPath)
+				return errors.Wrapf(err, "cannot copy template to %s", subPath)
 			}
 		} else {
 			in, err := templates.Open(filepath.ToSlash(filepath.Join(base, subPath)))
 			if err != nil {
-				return emperror.Wrapf(err, "cannot open %s", subPath)
+				return errors.Wrapf(err, "cannot open %s", subPath)
 			}
 			out, err := os.OpenFile(filepath.Join(target, sub, fe.Name()), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 			if err != nil {
 				in.Close()
-				return emperror.Wrapf(err, "cannot create file %s", filepath.Join(target, sub, fe.Name()))
+				return errors.Wrapf(err, "cannot create file %s", filepath.Join(target, sub, fe.Name()))
 			}
 			if _, err := io.Copy(out, in); err != nil {
 				in.Close()
 				out.Close()
-				return emperror.Wrapf(err, "cannot copy data %s/%s -> %s", path, subPath, filepath.Join(target, sub, fe.Name()))
+				return errors.Wrapf(err, "cannot copy data %s/%s -> %s", path, subPath, filepath.Join(target, sub, fe.Name()))
 			}
 			in.Close()
 			out.Close()
@@ -362,28 +362,28 @@ func recurseCopyTemplates(base, sub, target string) error {
 func createSphinx(project, copyright, author, release, path string) error {
 	if _, err := os.Stat(path); err != nil {
 		if err := os.Mkdir(path, 0755); err != nil {
-			return emperror.Wrapf(err, "cannot create folder %s", path)
+			return errors.Wrapf(err, "cannot create folder %s", path)
 		}
 	}
 	if err := recurseCopyTemplates("templates/reportbase", "", path); err != nil {
-		return emperror.Wrapf(err, "cannot copy shpinx template to %s", path)
+		return errors.Wrapf(err, "cannot copy shpinx template to %s", path)
 	}
 	confPyStr, err := templates.ReadFile("templates/conf.py.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template conf.py.tpl")
+		return errors.Wrapf(err, "cannot open template conf.py.tpl")
 	}
 	conf, err := template.New("index").Parse(string(confPyStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse conf.py.tpl")
+		return errors.Wrapf(err, "cannot parse conf.py.tpl")
 	}
 
 	out, err := os.OpenFile(filepath.Join(path, "conf.py"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open %s", filepath.Join(path, "conf.py"))
+		return errors.Wrapf(err, "cannot open %s", filepath.Join(path, "conf.py"))
 	}
 	defer out.Close()
 	if err := conf.Execute(out, struct{ Project, Copyright, Author, Release string }{Project: project, Copyright: copyright, Author: author, Release: release}); err != nil {
-		return emperror.Wrapf(err, "cannot execute conf.py.tpl - %s", confPyStr)
+		return errors.Wrapf(err, "cannot execute conf.py.tpl - %s", confPyStr)
 	}
 	return nil
 }
@@ -435,21 +435,21 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 
 		fileTplStr, err := templates.ReadFile("templates/file.rst.tpl")
 		if err != nil {
-			return emperror.Wrapf(err, "cannot open template file.rst.tpl")
+			return errors.Wrapf(err, "cannot open template file.rst.tpl")
 		}
 		file, err := template.New(fname).Funcs(templateFuncMap).Parse(string(fileTplStr))
 		if err != nil {
-			return emperror.Wrapf(err, "cannot parse file.rst.tpl")
+			return errors.Wrapf(err, "cannot parse file.rst.tpl")
 		}
 
 		ifp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, fname), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, fname))
+			return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, fname))
 		}
 		var indexer Indexer
 		// indexer.FFProbe.Format.Tags
 		if err := json.Unmarshal([]byte(content.Indexer), &indexer); err != nil {
-			return emperror.Wrapf(err, "cannot unmarshal indexer data - %s", content.Indexer)
+			return errors.Wrapf(err, "cannot unmarshal indexer data - %s", content.Indexer)
 		}
 		if indexer.Identify != nil {
 			if imgInt, ok := indexer.Identify["image"]; ok {
@@ -487,7 +487,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 			Indexer:   indexer,
 		}); err != nil {
 			ifp.Close()
-			return emperror.Wrapf(err, "cannot execute file template")
+			return errors.Wrapf(err, "cannot execute file template")
 		}
 		ifp.Close()
 
@@ -509,7 +509,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 		contents = append(contents, ct)
 		return nil
 	}); err != nil {
-		return emperror.Wrapf(err, "cannot load bagits content for bagit %s", bagit.Name)
+		return errors.Wrapf(err, "cannot load bagits content for bagit %s", bagit.Name)
 	}
 
 	var locTests = make(map[string][]RSTTableRow)
@@ -526,12 +526,12 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 			tests = append(tests, tbt)
 			return nil
 		}); err != nil {
-			return emperror.Wrapf(err, "cannot load tests for bagit %s", bagit.Name)
+			return errors.Wrapf(err, "cannot load tests for bagit %s", bagit.Name)
 		}
 		locTests[loc.name] = tests
 		transfer, err := loc.LoadTransfer(bagit)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot load transfer of %s to %s", bagit.Name, loc.name)
+			return errors.Wrapf(err, "cannot load transfer of %s to %s", bagit.Name, loc.name)
 		}
 		locTransfer[loc.name] = transfer
 	}
@@ -562,21 +562,21 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 		Transfer: transfer,
 		SHA512:   SHA512,
 		Files:    files}); err != nil {
-		return emperror.Wrapf(err, "cannot execute bagits template")
+		return errors.Wrapf(err, "cannot execute bagits template")
 	}
 
 	cntTplStr, err := templates.ReadFile("templates/bagit_contents.rst.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template bagit_contents.rst.tpl")
+		return errors.Wrapf(err, "cannot open template bagit_contents.rst.tpl")
 	}
 	cnt, err := template.New("cnt.rst").Funcs(templateFuncMap).Parse(string(cntTplStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse bagit_contents.rst.tpl")
+		return errors.Wrapf(err, "cannot parse bagit_contents.rst.tpl")
 	}
 
 	cfp, err := os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "contents.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, bagit.Name, "contents.rst"))
+		return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, bagit.Name, "contents.rst"))
 	}
 
 	if err := cnt.Execute(cfp, struct {
@@ -593,7 +593,7 @@ func (i *Ingest) ReportBagit(bagit *IngestBagit, t *template.Template, reportWri
 		SHA512:   SHA512,
 		Files:    files}); err != nil {
 		cfp.Close()
-		return emperror.Wrapf(err, "cannot execute bagits template")
+		return errors.Wrapf(err, "cannot execute bagits template")
 	}
 	cfp.Close()
 
@@ -621,12 +621,12 @@ func (i *Ingest) ReportBagits(reportBagits, reportSHA512 *template.Template, rep
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
+				return errors.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
 			}
 			if err := t.Last(); err != nil {
 				i.logger.Errorf("cannot check %s at %s: %v", bagit.Name, loc.name, err)
 				break
-				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
+				//return errors.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
 			}
 			price += loc.costs * float64(bagit.Size) / 1000000
 			switch t.status {
@@ -645,20 +645,20 @@ func (i *Ingest) ReportBagits(reportBagits, reportSHA512 *template.Template, rep
 		bagits = append(bagits, b)
 		return nil
 	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
+		return errors.Wrap(err, "error iterating bagits")
 	}
 	table := RSTTable{Data: bagits}
 	if err := reportBagits.Execute(reportWriter, struct {
 		BagitTable RSTTable
 		Bagits     []RSTTableRow
 	}{BagitTable: table, Bagits: bagits}); err != nil {
-		return emperror.Wrapf(err, "cannot execute bagits template")
+		return errors.Wrapf(err, "cannot execute bagits template")
 	}
 	if err := reportSHA512.Execute(checksumWriter, struct {
 		ChecksumName string
 		Checksums    map[string]string
 	}{ChecksumName: "SHA512", Checksums: sha512s}); err != nil {
-		return emperror.Wrapf(err, "cannot execute checksum template")
+		return errors.Wrapf(err, "cannot execute checksum template")
 	}
 	return nil
 }
@@ -674,12 +674,12 @@ func (i *Ingest) ReportIndex(t *template.Template, wr io.Writer) error {
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
+				return errors.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
 			}
 			if err := t.Last(); err != nil {
 				i.logger.Errorf("cannot check %s at %s: %v", bagit.Name, loc.name, err)
 				break
-				//return emperror.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
+				//return errors.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.Name)
 			}
 			switch t.status {
 			case "passed":
@@ -692,12 +692,12 @@ func (i *Ingest) ReportIndex(t *template.Template, wr io.Writer) error {
 		}
 		return nil
 	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
+		return errors.Wrap(err, "error iterating bagits")
 	}
 	if err := t.Execute(wr, struct {
 		TestsFailed int64
 	}{TestsFailed: testFailed}); err != nil {
-		return emperror.Wrapf(err, "cannot execute index template")
+		return errors.Wrapf(err, "cannot execute index template")
 	}
 	return nil
 }
@@ -713,12 +713,12 @@ func (i *Ingest) ReportKeys(t *template.Template, wr io.Writer) error {
 		crypts[bagit.Name] = ki
 		return nil
 	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
+		return errors.Wrap(err, "error iterating bagits")
 	}
 	if err := t.Execute(wr, struct {
 		KI map[string]keyiv
 	}{KI: crypts}); err != nil {
-		return emperror.Wrapf(err, "cannot execute keys template")
+		return errors.Wrapf(err, "cannot execute keys template")
 	}
 	return nil
 }
@@ -726,7 +726,7 @@ func (i *Ingest) ReportKeys(t *template.Template, wr io.Writer) error {
 func (i *Ingest) Report() error {
 	i.logger.Infof("creating sphinx folder")
 	if err := createSphinx("The Archive", "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/main"); err != nil {
-		return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
+		return errors.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
 	}
 
 	//
@@ -734,21 +734,21 @@ func (i *Ingest) Report() error {
 	//
 	keysTplStr, err := templates.ReadFile("templates/keys.txt.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template keys.txt.tpl")
+		return errors.Wrapf(err, "cannot open template keys.txt.tpl")
 	}
 	keys, err := template.New("keys").Funcs(templateFuncMap).Parse(string(keysTplStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+		return errors.Wrapf(err, "cannot parse index.rst.tpl")
 	}
 
 	kfp, err := os.OpenFile(filepath.Join(i.keyDir, "keys.txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.keyDir, "keys.txt"))
+		return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.keyDir, "keys.txt"))
 	}
 
 	if err := i.ReportKeys(keys, kfp); err != nil {
 		kfp.Close()
-		return emperror.Wrapf(err, "cannot execute template %s", "templates/keys.txt.tpl")
+		return errors.Wrapf(err, "cannot execute template %s", "templates/keys.txt.tpl")
 	}
 	kfp.Close()
 	//
@@ -756,21 +756,21 @@ func (i *Ingest) Report() error {
 	//
 	indexTplStr, err := templates.ReadFile("templates/index.rst.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template index.rst.tpl")
+		return errors.Wrapf(err, "cannot open template index.rst.tpl")
 	}
 	index, err := template.New("index").Funcs(templateFuncMap).Parse(string(indexTplStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse index.rst.tpl")
+		return errors.Wrapf(err, "cannot parse index.rst.tpl")
 	}
 
 	ifp, err := os.OpenFile(filepath.Join(i.reportDir, "main", "index.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
+		return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
 	}
 
 	if err := i.ReportIndex(index, ifp); err != nil {
 		ifp.Close()
-		return emperror.Wrapf(err, "cannot execute template %s", "templates/index.rst.tpl")
+		return errors.Wrapf(err, "cannot execute template %s", "templates/index.rst.tpl")
 	}
 	ifp.Close()
 
@@ -779,41 +779,41 @@ func (i *Ingest) Report() error {
 	//
 	bagitsTplStr, err := templates.ReadFile("templates/bagits.rst.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template bagits.rst.tpl")
+		return errors.Wrapf(err, "cannot open template bagits.rst.tpl")
 	}
 	bagits, err := template.New("bagits").Funcs(templateFuncMap).Parse(string(bagitsTplStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+		return errors.Wrapf(err, "cannot parse bagits.rst.tpl")
 	}
 
 	ifp, err = os.OpenFile(filepath.Join(i.reportDir, "main", "bagits.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagits.rst"))
+		return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagits.rst"))
 	}
 
 	checksumTplStr, err := templates.ReadFile("templates/bagit_checksum.txt.tpl")
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open template bagits.rst.tpl")
+		return errors.Wrapf(err, "cannot open template bagits.rst.tpl")
 	}
 	checksums, err := template.New("checksums").Funcs(templateFuncMap).Parse(string(checksumTplStr))
 	if err != nil {
-		return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+		return errors.Wrapf(err, "cannot parse bagits.rst.tpl")
 	}
 
 	cfp, err := os.OpenFile(filepath.Join(i.reportDir, "", "bagit_checksum.txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagit_checksum.txt"))
+		return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "bagit_checksum.txt"))
 	}
 
 	if err := i.ReportBagits(bagits, checksums, ifp, cfp); err != nil {
 		cfp.Close()
-		return emperror.Wrapf(err, "cannot execute template %s", "templates/bagit_checksum.txt.tpl")
+		return errors.Wrapf(err, "cannot execute template %s", "templates/bagit_checksum.txt.tpl")
 	}
 	cfp.Close()
 
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		if err := createSphinx(bagit.Name, "info-age GmbH Basel", "Jürgen Enge", "0.1.1", i.reportDir+"/"+bagit.Name); err != nil {
-			return emperror.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
+			return errors.Wrapf(err, "cannot create sphinx folder %s/main", i.reportDir)
 		}
 
 		//
@@ -821,27 +821,27 @@ func (i *Ingest) Report() error {
 		//
 		bagitTplStr, err := templates.ReadFile("templates/bagit.rst.tpl")
 		if err != nil {
-			return emperror.Wrapf(err, "cannot open template bagit.rst.tpl")
+			return errors.Wrapf(err, "cannot open template bagit.rst.tpl")
 		}
 		bagitTpl, err := template.New("bagit_" + bagit.Name).Funcs(templateFuncMap).Parse(string(bagitTplStr))
 		if err != nil {
-			return emperror.Wrapf(err, "cannot parse bagits.rst.tpl")
+			return errors.Wrapf(err, "cannot parse bagits.rst.tpl")
 		}
 
 		ifp, err = os.OpenFile(filepath.Join(i.reportDir, bagit.Name, "index.rst"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
+			return errors.Wrapf(err, "cannot open file %s", filepath.Join(i.reportDir, "index.rst"))
 		}
 
 		if err := i.ReportBagit(bagit, bagitTpl, ifp); err != nil {
 			ifp.Close()
-			return emperror.Wrapf(err, "cannot execute template %s", "templates/bagit.rst.tpl")
+			return errors.Wrapf(err, "cannot execute template %s", "templates/bagit.rst.tpl")
 		}
 		ifp.Close()
 
 		return nil
 	}); err != nil {
-		return emperror.Wrapf(err, "cannot load bagits")
+		return errors.Wrapf(err, "cannot load bagits")
 	}
 
 	return nil

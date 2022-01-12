@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dgraph-io/badger"
-	"github.com/goph/emperror"
 	"github.com/je4/bagarc/v2/pkg/bagit"
 	xssh "github.com/je4/sftp/v2/pkg/ssh"
 	xstream "github.com/je4/sftp/v2/pkg/stream"
 	"github.com/op/go-logging"
+	"github.com/pkg/errors"
 	"io/fs"
 	"io/ioutil"
 	"net/url"
@@ -41,11 +41,11 @@ type Ingest struct {
 func NewIngest(tempDir, keyDir, initLocName, reportDir string, db *sql.DB, dbschema string, privateKeys []string, logger *logging.Logger) (*Ingest, error) {
 	rsc, err := xstream.NewReadStreamQueue()
 	if err != nil {
-		return nil, emperror.Wrap(err, "cannot create read stream queue")
+		return nil, errors.Wrap(err, "cannot create read stream queue")
 	}
 	sftp, err := xssh.NewSFTP(privateKeys, "", "", 50, 64, 128*1024, rsc, logger)
 	if err != nil {
-		return nil, emperror.Wrap(err, "cannot create sftp")
+		return nil, errors.Wrap(err, "cannot create sftp")
 	}
 	i := &Ingest{
 		db:          db,
@@ -64,12 +64,12 @@ func (i *Ingest) Init() error {
 	var err error
 	i.locations, err = i.locationLoadAll()
 	if err != nil {
-		return emperror.Wrapf(err, "cannot load locations")
+		return errors.Wrapf(err, "cannot load locations")
 	}
 
 	i.tests, err = i.TestLoadAll()
 	if err != nil {
-		return emperror.Wrapf(err, "cannot load locations")
+		return errors.Wrapf(err, "cannot load locations")
 	}
 
 	var ok bool
@@ -89,7 +89,7 @@ func (i *Ingest) TestLoadAll() (map[string]*IngestTest, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get tests %s", sqlstr)
+		return nil, errors.Wrapf(err, "cannot get tests %s", sqlstr)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -98,7 +98,7 @@ func (i *Ingest) TestLoadAll() (map[string]*IngestTest, error) {
 			if err == sql.ErrNoRows {
 				return nil, nil
 			}
-			return nil, emperror.Wrapf(err, "cannot get tests %s", sqlstr)
+			return nil, errors.Wrapf(err, "cannot get tests %s", sqlstr)
 		}
 		tests[test.name] = test
 	}
@@ -113,7 +113,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 	row := i.db.QueryRow(sqlstr)
 	var numRows int64
 	if err := row.Scan(&numRows); err != nil {
-		return emperror.Wrapf(err, "cannot get number of rows - %s", sqlstr)
+		return errors.Wrapf(err, "cannot get number of rows - %s", sqlstr)
 	}
 
 	sqlstr = fmt.Sprintf("SELECT bagitid, Name, filesize, sha512, sha512_aes, baginfo, creator, Report, creationdate FROM %s.bagit LIMIT ?,?", i.schema)
@@ -122,7 +122,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 	for start = 0; start < numRows; start += pageSize {
 		rows, err := i.db.Query(sqlstr, start, pageSize)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot get locations %s", sqlstr)
+			return errors.Wrapf(err, "cannot get locations %s", sqlstr)
 		}
 		var bagits []*IngestBagit
 		for rows.Next() {
@@ -135,7 +135,7 @@ func (i *Ingest) BagitLoadAll(fn func(bagit *IngestBagit) error) error {
 				if err == sql.ErrNoRows {
 					return nil
 				}
-				return emperror.Wrapf(err, "cannot get bagit %s", sqlstr)
+				return errors.Wrapf(err, "cannot get bagit %s", sqlstr)
 			}
 			bagit.SHA512_aes = sha512_aes.String
 			bagit.Report = report.String
@@ -160,7 +160,7 @@ func (i *Ingest) testLoad(name string) (*IngestTest, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get location %s - %s", sqlstr, name)
+		return nil, errors.Wrapf(err, "cannot get location %s - %s", sqlstr, name)
 	}
 	return test, nil
 }
@@ -175,7 +175,7 @@ func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get locations %s", sqlstr)
+		return nil, errors.Wrapf(err, "cannot get locations %s", sqlstr)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -185,15 +185,15 @@ func (i *Ingest) locationLoadAll() (map[string]*IngestLocation, error) {
 			if err == sql.ErrNoRows {
 				return nil, nil
 			}
-			return nil, emperror.Wrapf(err, "cannot get location %s", sqlstr)
+			return nil, errors.Wrapf(err, "cannot get location %s", sqlstr)
 		}
 		loc.path, err = url.Parse(p)
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot parse url %s", p)
+			return nil, errors.Wrapf(err, "cannot parse url %s", p)
 		}
 		loc.checkInterval, err = time.ParseDuration(testIntervalStr)
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot parse interval %s of location %s", testIntervalStr, loc.name)
+			return nil, errors.Wrapf(err, "cannot parse interval %s of location %s", testIntervalStr, loc.name)
 		}
 		locations[loc.name] = loc
 	}
@@ -210,15 +210,15 @@ func (i *Ingest) locationLoad(name string) (*IngestLocation, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get location %s - %s", sqlstr, name)
+		return nil, errors.Wrapf(err, "cannot get location %s - %s", sqlstr, name)
 	}
 	loc.path, err = url.Parse(p)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannot parse url %s", p)
+		return nil, errors.Wrapf(err, "cannot parse url %s", p)
 	}
 	loc.checkInterval, err = time.ParseDuration(testIntervalStr)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannot parse interval %s", testIntervalStr)
+		return nil, errors.Wrapf(err, "cannot parse interval %s", testIntervalStr)
 	}
 	return loc, nil
 }
@@ -228,13 +228,13 @@ func (i *Ingest) locationStore(loc *IngestLocation) (*IngestLocation, error) {
 		sqlstr := fmt.Sprintf("INSERT INTO %s.location(Name, path, testinterval, params, encrypted, quality, costs) VALUES(?, ?, ?, ?, ?, ?, ?, ?) returning locationid", i.schema)
 		row := i.db.QueryRow(sqlstr, loc.name, loc.path.String(), loc.checkInterval.String(), loc.params, loc.encrypted, loc.quality, loc.costs)
 		if err := row.Scan(&loc.id); err != nil {
-			return nil, emperror.Wrapf(err, "cannot insert location %s - %s", sqlstr, loc.name)
+			return nil, errors.Wrapf(err, "cannot insert location %s - %s", sqlstr, loc.name)
 		}
 		return loc, nil
 	} else {
 		sqlstr := fmt.Sprintf("UPDATE %s.location SET Name=?, path=?, params=?, encrypted=?, quality=?, costs=? WHERE locationid=?", i.schema)
 		if _, err := i.db.Exec(sqlstr, loc.name, loc.path.String(), loc.params, loc.encrypted, loc.quality, loc.costs, loc.id); err != nil {
-			return nil, emperror.Wrapf(err, "cannot update location %s - %v", sqlstr, loc.id)
+			return nil, errors.Wrapf(err, "cannot update location %s - %v", sqlstr, loc.id)
 		}
 	}
 	return nil, fmt.Errorf("LocationStore() - strange things happen - %v", loc)
@@ -254,7 +254,7 @@ func (i *Ingest) transferLoad(loc *IngestLocation, bagit *IngestBagit) (*Transfe
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot load transfer - %s - %v, %v", sqlstr, loc.id, bagit.Id)
+		return nil, errors.Wrapf(err, "cannot load transfer - %s - %v, %v", sqlstr, loc.id, bagit.Id)
 	}
 	trans.start = start.Time
 	trans.end = end.Time
@@ -264,7 +264,7 @@ func (i *Ingest) transferLoad(loc *IngestLocation, bagit *IngestBagit) (*Transfe
 func (i *Ingest) transferStore(transfer *Transfer) (*Transfer, error) {
 	sqlstr := fmt.Sprintf("REPLACE INTO %s.transfer(bagitid, locationid, transfer_start, transfer_end, status, message) VALUES(?, ?, ?, ?, ?, ?)", i.schema)
 	if _, err := i.db.Exec(sqlstr, transfer.bagit.Id, transfer.loc.id, transfer.start, transfer.end, transfer.status, transfer.message); err != nil {
-		return nil, emperror.Wrapf(err, "cannot insert transfer %s - %s -> %s", sqlstr, transfer.loc.name, transfer.bagit.Name)
+		return nil, errors.Wrapf(err, "cannot insert transfer %s - %s -> %s", sqlstr, transfer.loc.name, transfer.bagit.Name)
 	}
 	return transfer, nil
 }
@@ -295,16 +295,16 @@ func (i *Ingest) bagitContentStore(ibc *IngestBagitContent) (*IngestBagitContent
 		}
 		chsums, err := json.Marshal(ibc.Checksums)
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot marshal checksums %v", ibc.Checksums)
+			return nil, errors.Wrapf(err, "cannot marshal checksums %v", ibc.Checksums)
 		}
 		sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, checksums, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
 		res, err := i.db.Exec(sqlstr, ibc.bagit.Id, ibc.ZipPath, ibc.DiskPath, ibc.Filesize, string(chsums), _mimetype, _width, _height, _duration, _indexer)
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot insert content of bagit %s at %s", ibc.bagit.Name, sqlstr)
+			return nil, errors.Wrapf(err, "cannot insert content of bagit %s at %s", ibc.bagit.Name, sqlstr)
 		}
 		ibc.contentId, err = res.LastInsertId()
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot get insert Id of content of bagit %s at %s - %s", ibc.bagit.Name, sqlstr)
+			return nil, errors.Wrapf(err, "cannot get insert Id of content of bagit %s at %s - %s", ibc.bagit.Name, sqlstr)
 		}
 		return ibc, nil
 	} else {
@@ -327,18 +327,18 @@ func (i *Ingest) bagitStore(bagit *IngestBagit) (*IngestBagit, error) {
 		sqlstr := fmt.Sprintf("INSERT INTO %s.bagit(Name, filesize, sha512, sha512_aes, Report, baginfo, creator, creationdate) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
 		res, err := i.db.Exec(sqlstr, bagit.Name, bagit.Size, bagit.SHA512, sha512_aes, report, bagit.Baginfo, bagit.Creator, bagit.Creationdate)
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot insert bagit %s - %s", sqlstr, bagit.Name)
+			return nil, errors.Wrapf(err, "cannot insert bagit %s - %s", sqlstr, bagit.Name)
 		}
 		bagit.Id, err = res.LastInsertId()
 		if err != nil {
-			return nil, emperror.Wrapf(err, "cannot get last insert Id %s", sqlstr)
+			return nil, errors.Wrapf(err, "cannot get last insert Id %s", sqlstr)
 		}
 
 		return bagit, nil
 	} else {
 		sqlstr := fmt.Sprintf("UPDATE %s.bagit SET Name=?, filesize=?, sha512=?, sha512_aes=?, Report=?, baginfo=?, creator=?, creationdate=? WHERE bagitid=?", i.schema)
 		if _, err := i.db.Exec(sqlstr, bagit.Name, bagit.Size, bagit.SHA512, bagit.SHA512_aes, bagit.Report, bagit.Baginfo, bagit.Creator, bagit.Creationdate, bagit.Id); err != nil {
-			return nil, emperror.Wrapf(err, "cannot update bagit %s", sqlstr)
+			return nil, errors.Wrapf(err, "cannot update bagit %s", sqlstr)
 		}
 	}
 	return nil, fmt.Errorf("BagitStore() - strange things happen - %v", bagit)
@@ -352,7 +352,7 @@ func (i *Ingest) bagitExistsAt(bagit *IngestBagit, location *IngestLocation) (bo
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
-		return false, emperror.Wrapf(err, "cannot check bagit %v at location %v", bagit.Id, location.id)
+		return false, errors.Wrapf(err, "cannot check bagit %v at location %v", bagit.Id, location.id)
 	}
 	return num > 0, nil
 }
@@ -364,7 +364,7 @@ func (i *Ingest) hasBagit(loc *IngestLocation, bagit *IngestBagit) (bool, error)
 	row := loc.ingest.db.QueryRow(sqlstr, loc.id, bagit.Id)
 	var num int64
 	if err := row.Scan(&num); err != nil {
-		return false, emperror.Wrapf(err, "cannot check for bagit - %s - %v, %v", sqlstr, loc.id, bagit.Id)
+		return false, errors.Wrapf(err, "cannot check for bagit - %s - %v, %v", sqlstr, loc.id, bagit.Id)
 	}
 	return num > 0, nil
 }
@@ -373,7 +373,7 @@ func (i *Ingest) bagitLocationStore(ibl *IngestBagitLocation) error {
 	sqlstr := fmt.Sprintf("REPLACE INTO %s.bagit_location (bagitid, locationid, transfer_start, transfer_end, status, message) VALUES (?, ?, ?, ?, ?, ?)", i.schema)
 	_, err := i.db.Exec(sqlstr, ibl.bagit.Id, ibl.location.id, ibl.start, ibl.end, ibl.status, ibl.message)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot insert bagit %s at %s - %s", sqlstr, ibl.bagit.Name, ibl.location.name)
+		return errors.Wrapf(err, "cannot insert bagit %s at %s - %s", sqlstr, ibl.bagit.Name, ibl.location.name)
 	}
 	return nil
 }
@@ -383,13 +383,13 @@ func (i *Ingest) bagitTestLocationStore(ibl *IngestBagitTestLocation) error {
 		sqlstr := fmt.Sprintf("INSERT INTO %s.bagit_test_location (bagitid, testid, locationid, start, end, status, data, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
 		_, err := i.db.Exec(sqlstr, ibl.bagit.Id, ibl.test.id, ibl.location.id, ibl.start, ibl.end, ibl.status, ibl.data, ibl.message)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot insert bagit_test_location - %s", sqlstr)
+			return errors.Wrapf(err, "cannot insert bagit_test_location - %s", sqlstr)
 		}
 	} else {
 		sqlstr := fmt.Sprintf("REPLACE INTO %s.bagit_test_location (bagit_location_testid, bagitid, testid, locationid, start, end, status, data, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
 		_, err := i.db.Exec(sqlstr, ibl.id, ibl.bagit.Id, ibl.test.id, ibl.location.id, ibl.start, ibl.end, ibl.status, ibl.data, ibl.message)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot insert bagit_test_location - %s", sqlstr)
+			return errors.Wrapf(err, "cannot insert bagit_test_location - %s", sqlstr)
 		}
 	}
 	return nil
@@ -401,7 +401,7 @@ func (i *Ingest) bagitTestLocationNeeded(ibl *IngestBagitTestLocation) (bool, er
 	row := i.db.QueryRow(sqlstr, "passed", ibl.bagit.Id, ibl.test.id, ibl.location.id, checkDate)
 	var num int64
 	if err := row.Scan(&num); err != nil {
-		return false, emperror.Wrapf(err, "cannot check for test interval - %s", sqlstr)
+		return false, errors.Wrapf(err, "cannot check for test interval - %s", sqlstr)
 	}
 	return num == 0, nil
 }
@@ -410,7 +410,7 @@ func (i *Ingest) bagitTestLocationLast(ibl *IngestBagitTestLocation) error {
 	sqlstr := fmt.Sprintf("SELECT status, start, end, message FROM %s.bagit_test_location WHERE bagitid=? AND testid=? AND locationid=? ORDER BY bagit_location_testid DESC", i.schema)
 	row := i.db.QueryRow(sqlstr, ibl.bagit.Id, ibl.test.id, ibl.location.id)
 	if err := row.Scan(&ibl.status, &ibl.start, &ibl.end, &ibl.message); err != nil {
-		return emperror.Wrapf(err, "cannot check for test interval - %s", sqlstr)
+		return errors.Wrapf(err, "cannot check for test interval - %s", sqlstr)
 	}
 	return nil
 }
@@ -426,7 +426,7 @@ func (i *Ingest) bagitLoad(name string) (*IngestBagit, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get bagit %s - %s", sqlstr, name)
+		return nil, errors.Wrapf(err, "cannot get bagit %s - %s", sqlstr, name)
 	}
 	bagit.SHA512_aes = sha512_aes.String
 	bagit.Report = report.String
@@ -458,12 +458,12 @@ func (i *Ingest) bagitAddContent(bagit *IngestBagit, zippath string, diskpath st
 	}
 	chsums, err := json.Marshal(checksums)
 	if err != nil {
-		return emperror.Wrapf(err, "cannot marshal checksums %v", checksums)
+		return errors.Wrapf(err, "cannot marshal checksums %v", checksums)
 	}
 
 	sqlstr := fmt.Sprintf("INSERT INTO %s.content (bagitid, zippath, diskpath, filesize, checksums, mimetype, width, height, duration, indexer) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.schema)
 	if _, err := i.db.Exec(sqlstr, bagit.Id, zippath, diskpath, filesize, chsums, mimetype, width, height, duration, indexer); err != nil {
-		return emperror.Wrapf(err, "cannot insert content of bagit %s at %s - %s", bagit.Name, sqlstr)
+		return errors.Wrapf(err, "cannot insert content of bagit %s at %s - %s", bagit.Name, sqlstr)
 	}
 	return nil
 
@@ -474,14 +474,14 @@ func (i *Ingest) bagitLocationLoad(bagit *IngestBagit, location *IngestLocation)
 	row := i.db.QueryRow(sqlstr, bagit.Id, location.id)
 	ibl, err := NewIngestBagitLocation(i, bagit, location)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannot create ingestbagitlocation")
+		return nil, errors.Wrapf(err, "cannot create ingestbagitlocation")
 	}
 	var start, end sql.NullTime
 	if err := row.Scan(&start, &end, &ibl.status, &ibl.message); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, emperror.Wrapf(err, "cannot get bagit %s - %s - %s", sqlstr, bagit.Name, location.name)
+		return nil, errors.Wrapf(err, "cannot get bagit %s - %s - %s", sqlstr, bagit.Name, location.name)
 	}
 	ibl.start = start.Time
 	ibl.end = end.Time
@@ -516,7 +516,7 @@ func (i *Ingest) Transfer() error {
 	if err := i.BagitLoadAll(func(bagit *IngestBagit) error {
 		source, err := i.bagitLocationLoad(bagit, i.initLoc)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot load initial transfer of %s - %s", bagit.Name, i.initLoc.name)
+			return errors.Wrapf(err, "cannot load initial transfer of %s - %s", bagit.Name, i.initLoc.name)
 		}
 
 		for key, loc := range i.locations {
@@ -525,19 +525,19 @@ func (i *Ingest) Transfer() error {
 			}
 			target, err := i.IngestBagitLocationNew(bagit, loc)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create transfer object")
+				return errors.Wrapf(err, "cannot create transfer object")
 			}
 			if exists, _ := target.Exists(); exists {
 				i.logger.Infof("bagit %s in %s already exists", bagit.Name, loc.name)
 				continue
 			}
 			if err := target.Transfer(source); err != nil {
-				return emperror.Wrapf(err, "cannot transfer bagit %s to %s", bagit.Name, target.location.name)
+				return errors.Wrapf(err, "cannot transfer bagit %s to %s", bagit.Name, target.location.name)
 			}
 		}
 		return nil
 	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
+		return errors.Wrap(err, "error iterating bagits")
 	}
 	return nil
 }
@@ -571,7 +571,7 @@ func (i *Ingest) Ingest() error {
 		// if it's already in database ignore file
 		ib, err := i.bagitLoad(name)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot load bagit %s", name)
+			return errors.Wrapf(err, "cannot load bagit %s", name)
 		}
 		if ib != nil {
 			i.logger.Infof("bagit %s already ingested", name)
@@ -583,7 +583,7 @@ func (i *Ingest) Ingest() error {
 		// create tempdir for database
 		tmpdir, err := ioutil.TempDir(i.tempDir, filepath.Base(bagitPath))
 		if err != nil {
-			return emperror.Wrapf(err, "cannot create temporary folder in %s", i.tempDir)
+			return errors.Wrapf(err, "cannot create temporary folder in %s", i.tempDir)
 		}
 
 		// initialize badger database
@@ -591,7 +591,7 @@ func (i *Ingest) Ingest() error {
 		bconfig.Logger = i.logger // use our logger...
 		checkDB, err := badger.Open(bconfig)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot open badger database")
+			return errors.Wrapf(err, "cannot open badger database")
 		}
 		// close database and delete temporary files
 		defer func() {
@@ -610,7 +610,7 @@ func (i *Ingest) Ingest() error {
 		var baginfoBytes bytes.Buffer
 		baginfoWriter := bufio.NewWriter(&baginfoBytes)
 		if err := checker.Check(metaWriter); err != nil {
-			return emperror.Wrapf(err, "error checking file %v", bagitPath)
+			return errors.Wrapf(err, "error checking file %v", bagitPath)
 		}
 		// paranoia
 		metaWriter.Flush()
@@ -626,34 +626,34 @@ func (i *Ingest) Ingest() error {
 		var metadata Metadata
 
 		if err := json.Unmarshal(metaBytes.Bytes(), &metadata); err != nil {
-			return emperror.Wrapf(err, "cannot unmarshal json %s", metaBytes.String())
+			return errors.Wrapf(err, "cannot unmarshal json %s", metaBytes.String())
 		}
 
 		// create checksum
 		cs, err := bagit.SHA512(bagitPath)
 		if err != nil {
-			return emperror.Wrap(err, "cannot calculate checksum")
+			return errors.Wrap(err, "cannot calculate checksum")
 		}
 
 		// create bagit ingest object
 		bagit, err := i.BagitNew(name, info.Size(), cs, "", "", "bagarc", baginfoBytes.String(), time.Now())
 		if err != nil {
-			return emperror.Wrapf(err, "cannot create bagit entity %s", name)
+			return errors.Wrapf(err, "cannot create bagit entity %s", name)
 		}
 		// store it in database
 		if err := bagit.Store(); err != nil {
-			return emperror.Wrapf(err, "cannot store %s", name)
+			return errors.Wrapf(err, "cannot store %s", name)
 		}
 
 		ibl, err := i.IngestBagitLocationNew(bagit, i.initLoc)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot create initial ingestbagitlocation")
+			return errors.Wrapf(err, "cannot create initial ingestbagitlocation")
 		}
 		if err := ibl.SetData("ok", "initial ingest location", time.Now().Local(), time.Now().Local()); err != nil {
-			return emperror.Wrapf(err, "cannot set data for ingestbagitlocation")
+			return errors.Wrapf(err, "cannot set data for ingestbagitlocation")
 		}
 		if err := ibl.Store(); err != nil {
-			return emperror.Wrapf(err, "cannot store initial bagit location")
+			return errors.Wrapf(err, "cannot store initial bagit location")
 		}
 
 		for _, meta := range metadata {
@@ -697,12 +697,12 @@ func (i *Ingest) Ingest() error {
 
 		/*
 			if err := bi.Encrypt(Name, bagitPath); err != nil {
-				return emperror.Wrapf(err, "cannot encrypt %s", bagitPath)
+				return errors.Wrapf(err, "cannot encrypt %s", bagitPath)
 			}
 		*/
 		return nil
 	}); err != nil {
-		return emperror.Wrapf(err, "error walking %s", fp)
+		return errors.Wrapf(err, "error walking %s", fp)
 	}
 	return nil
 }
@@ -716,15 +716,15 @@ func (i *Ingest) Check() error {
 		for _, loc := range i.locations {
 			t, err := i.IngestBagitTestLocationNew(bagit, loc, daTest)
 			if err != nil {
-				return emperror.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
+				return errors.Wrapf(err, "cannot create test for %s at %s", bagit.Name, loc.name)
 			}
 			if err := t.Test(); err != nil {
-				return emperror.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.name)
+				return errors.Wrapf(err, "cannot check %s at %s", bagit.Name, loc.name)
 			}
 		}
 		return nil
 	}); err != nil {
-		return emperror.Wrap(err, "error iterating bagits")
+		return errors.Wrap(err, "error iterating bagits")
 	}
 	return nil
 }

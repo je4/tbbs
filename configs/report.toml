@@ -1,0 +1,28 @@
+#certpem = "auto"
+#keypem = ""
+#basedir = "./web/static"
+#addr = "localhost:443"
+#addrext = "https://localhost/"
+#user = "sam"
+#password = "samantha"
+templatedir = "./pkg/report/template"
+staticdir = "./pkg/report/static"
+
+[db]
+    #[username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
+    dsn = "tbbs:hcpOLPk64DtgNXLR@tcp(localhost:3308)/tbbs?parseTime=true"
+    connMaxTimeout = "4h"
+    schema = "tbbs"
+
+[tunnel.main]
+    user = "root"
+    privatekey = "C:/daten/keys/putty_ed25519.priv.openssh"
+    [tunnel.main.endpoint]
+        port = 22
+        host = "ba14ns21403.fhnw.ch"
+    [tunnel.main.forward.mysql.local]
+        port = 3308
+        host = "localhost"
+    [tunnel.main.forward.mysql.remote]
+        port = 3306
+        host = "v000306.adm.ds.fhnw.ch"

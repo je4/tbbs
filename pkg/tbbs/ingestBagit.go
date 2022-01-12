@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/goph/emperror"
+	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,7 +39,7 @@ func (bagit *IngestBagit) ExistsAt(location *IngestLocation) (bool, error) {
 func (bagit *IngestBagit) Check(location *IngestLocation, checkInterval time.Duration) (bool, error) {
 	exists, err := bagit.ExistsAt(location)
 	if err != nil {
-		return false, emperror.Wrapf(err, "cannot check bagit location %v", location.name)
+		return false, errors.Wrapf(err, "cannot check bagit location %v", location.name)
 	}
 	if !exists {
 		return false, fmt.Errorf("bagit %v not at location %v", bagit.Name, location.name)
@@ -64,7 +64,7 @@ func (bagit *IngestBagit) GetKey() []byte {
 func (bagit *IngestBagit) SetKey(key []byte) error {
 	fname := filepath.Join(bagit.ingest.keyDir, bagit.Name+".key")
 	if err := os.WriteFile(fname, []byte(fmt.Sprintf("%x", key)), 0600); err != nil {
-		return emperror.Wrapf(err, "cannot write file %s", fname)
+		return errors.Wrapf(err, "cannot write file %s", fname)
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func (bagit *IngestBagit) GetIV() []byte {
 func (bagit *IngestBagit) SetIV(iv []byte) error {
 	fname := filepath.Join(bagit.ingest.keyDir, bagit.Name+".iv")
 	if err := os.WriteFile(fname, []byte(fmt.Sprintf("%x", iv)), 0600); err != nil {
-		return emperror.Wrapf(err, "cannot write file %s", fname)
+		return errors.Wrapf(err, "cannot write file %s", fname)
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func (bagit *IngestBagit) TestLoadAll(loc *IngestLocation, fn func(test *IngestB
 	row := bagit.ingest.db.QueryRow(sqlstr, bagit.Id, loc.id)
 	var numRows int64
 	if err := row.Scan(&numRows); err != nil {
-		return emperror.Wrapf(err, "cannot get number of rows - %s", sqlstr)
+		return errors.Wrapf(err, "cannot get number of rows - %s", sqlstr)
 	}
 
 	sqlstr = fmt.Sprintf("SELECT btl.bagit_location_testid, t.name, btl.start, btl.end, btl.status, btl.message, btl.data "+
@@ -103,7 +103,7 @@ func (bagit *IngestBagit) TestLoadAll(loc *IngestLocation, fn func(test *IngestB
 	for start = 0; start < numRows; start += pageSize {
 		rows, err := bagit.ingest.db.Query(sqlstr, bagit.Id, loc.id, start, pageSize)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot get content %s", sqlstr)
+			return errors.Wrapf(err, "cannot get content %s", sqlstr)
 		}
 		var tests []*IngestBagitTestLocation
 		for rows.Next() {
@@ -120,7 +120,7 @@ func (bagit *IngestBagit) TestLoadAll(loc *IngestLocation, fn func(test *IngestB
 				if err == sql.ErrNoRows {
 					return nil
 				}
-				return emperror.Wrapf(err, "cannot get bagit %s", sqlstr)
+				return errors.Wrapf(err, "cannot get bagit %s", sqlstr)
 			}
 			var ok bool
 			test.test, ok = bagit.ingest.tests[testname]
@@ -151,7 +151,7 @@ func (bagit *IngestBagit) ContentLoadAll(fn func(content *IngestBagitContent) er
 	row := bagit.ingest.db.QueryRow(sqlstr, bagit.Id)
 	var numRows int64
 	if err := row.Scan(&numRows); err != nil {
-		return emperror.Wrapf(err, "cannot get number of rows - %s", sqlstr)
+		return errors.Wrapf(err, "cannot get number of rows - %s", sqlstr)
 	}
 
 	sqlstr = fmt.Sprintf("SELECT contentid, zippath, diskpath, filesize, checksums, mimetype, width, height, duration, indexer "+
@@ -162,7 +162,7 @@ func (bagit *IngestBagit) ContentLoadAll(fn func(content *IngestBagitContent) er
 	for start = 0; start < numRows; start += pageSize {
 		rows, err := bagit.ingest.db.Query(sqlstr, bagit.Id, start, pageSize)
 		if err != nil {
-			return emperror.Wrapf(err, "cannot get content %s", sqlstr)
+			return errors.Wrapf(err, "cannot get content %s", sqlstr)
 		}
 		var contents []*IngestBagitContent
 		for rows.Next() {
@@ -176,11 +176,11 @@ func (bagit *IngestBagit) ContentLoadAll(fn func(content *IngestBagitContent) er
 				if err == sql.ErrNoRows {
 					return nil
 				}
-				return emperror.Wrapf(err, "cannot get bagit %s", sqlstr)
+				return errors.Wrapf(err, "cannot get bagit %s", sqlstr)
 			}
 			var checksums = make(map[string]string)
 			if err := json.Unmarshal([]byte(checksumstr.String), &checksums); err != nil {
-				return emperror.Wrapf(err, "cannot unmarshal checksum %s", checksumstr.String)
+				return errors.Wrapf(err, "cannot unmarshal checksum %s", checksumstr.String)
 			}
 			content.Checksums = checksums
 			content.ZipPath = zippath.String

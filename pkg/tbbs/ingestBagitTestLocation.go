@@ -3,7 +3,7 @@ package tbbs
 import (
 	"crypto/sha512"
 	"fmt"
-	"github.com/goph/emperror"
+	"github.com/pkg/errors"
 	"io"
 	"net/url"
 	"os"
@@ -54,10 +54,10 @@ func (ibl *IngestBagitTestLocation) checksumSFTP() ([]byte, error) {
 	}
 	u, err := url.Parse(urlstring)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannot parse url %s", urlstring)
+		return nil, errors.Wrapf(err, "cannot parse url %s", urlstring)
 	}
 	if _, err := ibl.ingest.sftp.Get(u, shaSink); err != nil {
-		return nil, emperror.Wrapf(err, "cannot generate checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
+		return nil, errors.Wrapf(err, "cannot generate checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
 	return shaSink.Sum(nil), nil
 }
@@ -75,12 +75,12 @@ func (ibl *IngestBagitTestLocation) checksumFile() ([]byte, error) {
 	}
 	fp, err := os.OpenFile(path, os.O_RDONLY, 0666)
 	if err != nil {
-		return nil, emperror.Wrapf(err, "cannot open %s", path)
+		return nil, errors.Wrapf(err, "cannot open %s", path)
 	}
 	defer fp.Close()
 	shaSink := sha512.New()
 	if _, err := io.Copy(shaSink, fp); err != nil {
-		return nil, emperror.Wrapf(err, "cannot create checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
+		return nil, errors.Wrapf(err, "cannot create checksum of %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
 	return shaSink.Sum(nil), nil
 }
@@ -88,7 +88,7 @@ func (ibl *IngestBagitTestLocation) checksumFile() ([]byte, error) {
 func (ibl *IngestBagitTestLocation) Test() error {
 	testNeeded, err := ibl.ingest.bagitTestLocationNeeded(ibl)
 	if err != nil {
-		return emperror.Wrap(err, "cannot check for test need")
+		return errors.Wrap(err, "cannot check for test need")
 	}
 	if !testNeeded {
 		ibl.ingest.logger.Infof("no %s test needed for %s at %s", ibl.test.name, ibl.bagit.Name, ibl.location.name)
@@ -137,7 +137,7 @@ func (ibl *IngestBagitTestLocation) Test() error {
 	}
 	ibl.end = time.Now()
 	if err := ibl.Store(); err != nil {
-		return emperror.Wrapf(err, "cannot store test for %s at %s", ibl.bagit.Name, ibl.location.name)
+		return errors.Wrapf(err, "cannot store test for %s at %s", ibl.bagit.Name, ibl.location.name)
 	}
 	ibl.ingest.logger.Infof("checksum for %s at %s %s", ibl.bagit.Name, ibl.location.name, ibl.status)
 	return nil

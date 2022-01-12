@@ -1,0 +1,45 @@
+<html>{{ $this := . }}
+<head>
+    <title>TBBS - Report - Overview</title>
+
+    <!-- link href="static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css" -->
+    <link href="static/font/inter/inter.css" rel="stylesheet" type="text/css">
+    <link href="static/css/tbbs.css" rel="stylesheet" type="text/css">
+    <script src="static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
+</head>
+<body>
+<h1>TBBS - The boring bagit store</h1>
+<h2>Overview - Total</h2>
+<table style="margin-left: auto; margin-right: auto;">
+    <tr>
+        <td>Size</td><td class="right">{{formatSize .Size}}</td>
+    </tr>
+    <tr>
+        <td>Files</td><td class="right">{{formatInt64 .Files}}</td>
+    </tr>
+    <tr>
+        <td>Bagits</td><td class="right">{{len .Bagits}}</td>
+    </tr>
+    <tr>
+        <td>Health</td><td>OK: {{.HealthOK}} // Failed: {{.HealthFailed}}</td>
+    </tr>
+</table>
+<h2>Overview Bagits</h2>
+<table style="margin-left: auto; margin-right: auto;">
+    <tr>
+        <th class="border head">Name</th>
+        <th class="border head">Size</th>
+        <th class="border head">Files</th>
+        <th class="border head">Health</th>
+    </tr>
+    {{range $bagit := .Bagits}}
+        <tr>
+            <td class="border"><a href="bagit/{{$bagit.BagitID}}">{{$bagit.Name}}</a></td>
+            <td class="right border">{{formatSize $bagit.Size}}</td>
+            <td class="right border">{{formatInt64 $bagit.Files}}</td>
+            <td class="border{{if $bagit.HealthOK}} ok{{else}} alert{{end}}">{{if $bagit.HealthOK}}OK{{else}}Failed{{end}}</td>
+        </tr>
+    {{end}}
+</table>
+</body>
+</html>

@@ -42,24 +42,25 @@ type DBMySQL struct {
 }
 
 // main config structure for toml file
-type BagitConfig struct {
-	CertChain      string               `toml:"*certchain"`
-	PrivateKey     []string             `toml:"privatekey"`
-	Logfile        string               `toml:"logfile"`
-	Loglevel       string               `toml:"loglevel"`
-	Logformat      string               `toml:"logformat"`
-	Checksum       []string             `toml:"checksum"`
-	Tempdir        string               `toml:"tempdir"`
-	Reportdir      string               `toml:"reportdir"`
-	KeyDir         string               `toml:"keydir"`
-	DBFolder       string               `toml:"dbfolder"`
-	BaseDir        string               `toml:"basedir"`
-	Tunnel         map[string]SSHTunnel `toml:"tunnel"`
-	DB             DBMySQL              `toml:"db"`
-	IngestLocation string               `toml:"ingestloc"`
+type Config struct {
+	CertPem     string               `toml:"certpem"`
+	KeyPem      string               `toml:"keypem"`
+	LogFile     string               `toml:"logfile"`
+	LogLevel    string               `toml:"loglevel"`
+	LogFormat   string               `toml:"logformat"`
+	AccessLog   string               `toml:"accesslog"`
+	BaseDir     string               `toml:"basedir"`
+	Addr        string               `toml:"addr"`
+	AddrExt     string               `toml:"addrext"`
+	User        string               `toml:"user"`
+	Password    string               `toml:"password"`
+	Tunnel      map[string]SSHTunnel `toml:"tunnel"`
+	DB          DBMySQL              `toml:"db"`
+	TemplateDir string               `toml:"templatedir"`
+	StaticDir   string               `toml:"staticdir"`
 }
 
-func LoadBagitConfig(fp string, conf *BagitConfig) error {
+func LoadConfig(fp string, conf *Config) error {
 	_, err := toml.DecodeFile(fp, conf)
 	if err != nil {
 		return errors.Wrapf(err, "error loading config file %v", fp)

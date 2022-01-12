@@ -1,0 +1,36 @@
+@import "vars";
+
+* {
+    font-family: "Inter",  sans-serif;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+td {
+    vertical-align: top;
+    border-bottom: 1px solid black;
+}
+
+td.right {
+    text-align: right;
+}
+
+td.alert {
+    background-color: $lightred;
+}
+
+td.ok {
+    background-color: $lightgreen;
+}
+
+td.border, th.border {
+    border-style: solid;
+    border-width: 1px;
+    border-color: black;
+}
+
+th {
+    font-weight: bold;
+}
