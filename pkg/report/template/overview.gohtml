@@ -2,7 +2,7 @@
 <head>
     <title>TBBS - Report - Overview</title>
 
-    <!-- link href="static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css" -->
+    <link href="static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css">
     <link href="static/font/inter/inter.css" rel="stylesheet" type="text/css">
     <link href="static/css/tbbs.css" rel="stylesheet" type="text/css">
     <script src="static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
@@ -21,7 +21,7 @@
         <td>Bagits</td><td class="right">{{len .Bagits}}</td>
     </tr>
     <tr>
-        <td>Health</td><td>OK: {{.HealthOK}} // Failed: {{.HealthFailed}}</td>
+        <td>Health</td><td>Passed: {{.HealthOK}} // Failed: {{.HealthFailed}}</td>
     </tr>
 </table>
 <h2>Overview Bagits</h2>
@@ -37,7 +37,7 @@
             <td class="border"><a href="bagit/{{$bagit.BagitID}}">{{$bagit.Name}}</a></td>
             <td class="right border">{{formatSize $bagit.Size}}</td>
             <td class="right border">{{formatInt64 $bagit.Files}}</td>
-            <td class="border{{if $bagit.HealthOK}} ok{{else}} alert{{end}}">{{if $bagit.HealthOK}}OK{{else}}Failed{{end}}</td>
+            <td class="border{{if $bagit.HealthOK}} ok{{else}} alert{{end}}">{{if $bagit.HealthOK}}Passed{{else}}Failed{{end}} ({{printf "%.02f"  .Quality}})</td>
         </tr>
     {{end}}
 </table>

@@ -120,7 +120,7 @@ func main() {
 	}
 	db.SetConnMaxLifetime(config.DB.ConnMaxTimeout.Duration)
 
-	stats, err := report.NewStatistics(db, "tbbs")
+	stats, err := report.NewStatistics(db, "tbbs", logger)
 	if err != nil {
 		logger.Panicf("cannot create statistics module: %v", err)
 		return

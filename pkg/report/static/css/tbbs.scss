@@ -2,6 +2,29 @@
 
 * {
     font-family: "Inter",  sans-serif;
+    font-size: 8px;
+}
+
+@media print {
+    @page {
+        @bottom-center {
+            content: counter(page) "/" counter(pages);
+        }
+        @top-center {
+            content: string(title) " - " string(subtitle);
+        }
+    }
+
+    h2 {
+        string-set: title content(text);
+    }
+    h3 {
+        string-set: subtitle content(text);
+    }
+
+    h3 {
+        break-before: page;
+    }
 }
 
 table {
@@ -11,6 +34,10 @@ table {
 td {
     vertical-align: top;
     border-bottom: 1px solid black;
+}
+
+td.break {
+    overflow-wrap: anywhere;
 }
 
 td.right {

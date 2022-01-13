@@ -2,14 +2,14 @@
 <head>
     <title>TBBS - Report - {{.Name}}</title>
 
-    <!-- link href="static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css" -->
+    <link href="../static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css">
     <link href="../static/font/inter/inter.css" rel="stylesheet" type="text/css">
     <link href="../static/css/tbbs.css" rel="stylesheet" type="text/css">
     <script src="../static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
 </head>
 <body>
 <h1>TBBS - The boring bagit store</h1>
-<h2>{{.Name}}</h2>
+<h2 class="title">{{.Name}}</h2>
 
 <table style="margin-left: auto; margin-right: auto;">
     <tr>
@@ -19,15 +19,19 @@
         <td class="border">Files</td><td class="border">{{formatInt (len .Files)}}</td>
     </tr>
     <tr>
-        <td class="border">SHA512</td><td class="border" style="overflow-wrap: anywhere;">{{.SHA512}}</td>
+        <td class="border">SHA512</td><td class="border break">{{.SHA512}}</td>
     </tr>
     <tr>
-        <td class="border">SHA512 Encrypted</td><td class="border" style="overflow-wrap: anywhere;">{{.SHA512_AES}}</td>
+        <td class="border">SHA512 Encrypted</td><td class="border break">{{.SHA512_AES}}</td>
     </tr>
     <tr>
-        <td  class="border">Health</td><td class="border{{if .HealthOK}} ok{{else}} alert{{end}}">{{if .HealthOK}}OK{{else}}Failed{{end}}</td>
+        <td  class="border">Health</td><td class="border{{if .HealthOK}} ok{{else}} alert{{end}}">{{if .HealthOK}}Passed{{else}}Failed{{end}} ({{printf "%0.2f" .Quality}})</td>
+    </tr>
+    <tr>
+        <td  class="border">Costs</td><td class="border">{{printf "%0.2f" .Costs}}</td>
     </tr>
 </table>
+
 <h3>Ingest</h3>
 
 <table style="">
@@ -36,6 +40,8 @@
         <th class="border">Start</th>
         <th class="border">Duration</th>
         <th class="border">Encrypted</th>
+        <th class="border">Quality</th>
+        <th class="border">Costs</th>
         <th class="border">Status</th>
         <th class="border">Message</th>
     </tr>
@@ -45,11 +51,182 @@
             <td class="border">{{$ingest.TransferStart | date "2006-01-02 15:04:05"}}</td>
             <td class="border">{{$ingest.TransferDuration | duration }}</td>
             <td class="border">{{if $ingest.Encrypted}}yes{{else}}no{{end}}</td>
+            <td class="border">{{$ingest.Quality}}</td>
+            <td class="border">{{$ingest.Costs}}</td>
             <td class="border">{{$ingest.Status}}</td>
             <td class="border" style="overflow-wrap: anywhere;">{{$ingest.Message}}</td>
         </tr>
     {{end}}
 </table>
-<h3>Check</h3>
+
+<h3 style="">Check</h3>
+
+<table style="">
+    <tr>
+        <th class="border">Location</th>
+        <th class="border">Test</th>
+        <th class="border">Start</th>
+        <th class="border">Duration</th>
+        <th class="border">Status</th>
+    </tr>
+    {{range $check := .Checks}}
+        <tr>
+            <td class="border">{{$check.Location}}</td>
+            <td class="border">{{$check.Test}}</td>
+            <td class="border">{{$check.Start | date "2006-01-02 15:04:05"}}</td>
+            <td class="border right">{{$check.Duration | duration }}</td>
+            <td class="border">{{$check.Status}}</td>
+        </tr>
+    {{end}}
+</table>
+
+<h3 style="">Mimetypes</h3>
+
+<table style="">
+    <tr>
+        <th class="border">Mimetype</th>
+        <th class="border">Size</th>
+        <th class="border">Count</th>
+    </tr>
+    {{range $mime := .Mimetypes}}
+        <tr>
+            <td class="border">{{$mime.Mimetype}}</td>
+            <td class="border right">{{$mime.Size | formatSize}}</td>
+            <td class="border right">{{$mime.Count}}</td>
+        </tr>
+    {{end}}
+</table>
+
+<h3 style="">Content</h3>
+
+<table style="">
+    <tr>
+        <th class="border">Name</th>
+        <th class="border">Size</th>
+        <th class="border">Mimetype</th>
+        <th class="border">Dimensions</th>
+    </tr>
+    {{range $content := .Content}}
+        <tr>
+            <td class="border break">{{$content.DiskPath}}</td>
+            <td class="border right">{{$content.Filesize | formatSize}}</td>
+            <td class="border">{{$content.Mimetype}}</td>
+            <td class="border right">{{if (gt $content.Width 0)}}{{$content.Width}}x{{$content.Height}}{{end}}{{if (gt $content.Duration 0)}} {{$content.Duration}}sec{{end}}</td>
+        </tr>
+    {{end}}
+</table>
+
+
+{{range $content := .Content}}
+    <h3 style="overflow-wrap: anywhere;">{{$content.DiskPath}}</h3>
+    <table style="margin-left: auto; margin-right: auto;">
+        <tr>
+            <td class="border">Diskpath</td><td class="border break">{{$content.DiskPath}}</td>
+        </tr>
+        <tr>
+            <td class="border">Zippath</td><td class="border break">{{$content.ZipPath}}</td>
+        </tr>
+        <tr>
+            <td class="border">Size</td><td class="border">{{formatSize $content.Filesize}} ({{formatInt64 $content.Filesize}} Byte)</td>
+        </tr>
+        {{range $name, $csum := $content.Checksums}}
+        <tr>
+            <td class="border">{{$name}}</td><td class="border break">{{$csum}}</td>
+        </tr>
+        {{end}}
+        <tr>
+            <td class="border">Mimetype</td><td class="border">{{$content.Mimetype}}</td>
+        </tr>
+        <tr>
+            <td class="border">Dimension</td><td class="border">{{if (gt $content.Width 0)}}{{$content.Width}}x{{$content.Height}}{{end}}{{if (gt $content.Duration 0)}} {{$content.Duration}}sec{{end}}</td>
+        </tr>
+    </table>
+
+    <h4>Siegfried</h4>
+<table>
+{{range $val := $content.Indexer.Siegfried}}
+    <tr>
+        <td class="border">Pronom</td><td class="border">{{$val.ID}}</td>
+    </tr>
+    <tr>
+        <td class="border">Name</td><td class="border">{{$val.Name}}</td>
+    </tr>
+    <tr>
+        <td class="border">Mimetype</td><td class="border">{{$val.MIME}}</td>
+    </tr>
+    <tr>
+        <td class="border">Basis</td><td class="border">{{$val.Basis | join " // "}}</td>
+    </tr>
+{{end}}
+</table>
+
+{{if (gt (len $content.Indexer.Clamav) 0)}}
+<h4>Clamav</h4>
+
+<table>
+    {{range $name,$val := $content.Indexer.Clamav}}
+        <tr>
+            <td class="border">{{$name}}</td><td class="border">{{$val}}</td>
+        </tr>
+    {{end}}
+</table>
+{{end}}
+
+{{if (gt (len $content.Indexer.NSRL) 0)}}
+    <h4>NSRL</h4>
+
+    <table>
+        {{range $nsrl := $content.Indexer.NSRL}}
+            <tr>
+                <td class="border">File</td><td class="border">{{range $name, $val := $nsrl.File}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        <!--
+            <tr>
+                <td class="border">FileMfG</td><td class="border">{{range $name, $val := $nsrl.FileMfG}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        -->
+            <tr>
+                <td class="border">OS</td><td class="border">{{range $name, $val := $nsrl.OS}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        <!--
+            <tr>
+                <td class="border">OSMfg</td><td class="border">{{range $name, $val := $nsrl.OSMfg}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        -->
+            <tr>
+                <td class="border">Prod</td><td class="border">{{range $name, $val := $nsrl.Prod}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        <!--
+            <tr>
+                <td class="border">ProdMfg</td><td class="border">{{range $name, $val := $nsrl.ProdMfg}}{{$name}}: {{$val}}; {{end}}</td>
+            </tr>
+        -->
+        {{end}}
+    </table>
+{{end}}
+
+    {{if (gt (len $content.Indexer.Exif) 0)}}
+        <h4>EXIF</h4>
+
+        <table>
+            {{$count := 0}}
+            {{range $name,$val := $content.Indexer.Exif}}
+                {{$count = add1 $count}}
+                {{if (lt $count 26)}}
+                <tr>
+                    <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                </tr>
+                {{end}}
+                {{if (eq $count 26)}}
+                    <tr>
+                        <td class="border">...</td><td class="border">{{sub (len $content.Indexer.Exif) 25}} more entries</td>
+                    </tr>
+                {{end}}
+            {{end}}
+        </table>
+    {{end}}
+
+{{end}}
+
 </body>
 </html>
