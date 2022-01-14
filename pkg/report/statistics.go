@@ -237,6 +237,7 @@ type BagitOverview struct {
 	CreationDate       time.Time
 	HealthOK           bool
 	Quality            float64
+	BagInfo            string
 	Checks             []*BagitOverviewCheck
 	Files              []*BagitOverviewFile
 	Ingest             []*BagitOverviewIngest
@@ -271,10 +272,10 @@ func (stat *Statistics) BagitOverview(id int64) (*BagitOverview, error) {
 	}
 
 	var creationDate = sql.NullTime{}
-	sqlstr := fmt.Sprintf("SELECT name, filesize, sha512, sha512_aes, creator, creationdate"+
+	sqlstr := fmt.Sprintf("SELECT name, baginfo, filesize, sha512, sha512_aes, creator, creationdate"+
 		" FROM %s.bagit WHERE bagitid=?", stat.schema)
 	row := stat.db.QueryRow(sqlstr, id)
-	if err := row.Scan(&bo.Name, &bo.Size, &bo.SHA512, &bo.SHA512_AES, &bo.Creator, &creationDate); err != nil {
+	if err := row.Scan(&bo.Name, &bo.BagInfo, &bo.Size, &bo.SHA512, &bo.SHA512_AES, &bo.Creator, &creationDate); err != nil {
 		return nil, errors.Wrapf(err, "cannot execute query %s", sqlstr)
 	}
 	bo.CreationDate = creationDate.Time

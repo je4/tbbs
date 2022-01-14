@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"github.com/Masterminds/sprig"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -13,8 +14,10 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -84,6 +87,36 @@ func (s *Server) InitTemplates() error {
 	}
 	funcMap["formatInt"] = func(value int) string {
 		return FormatInt(int64(value), 3, '\'')
+	}
+
+	funcMap["atof"] = func(value string) float64 {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return math.NaN()
+		}
+		return result
+	}
+
+	funcMap["addf"] = func(value, incr float64) float64 {
+		return value + incr
+	}
+
+	funcMap["toMap"] = StructToMap
+
+	funcMap["formatDuration"] = func(value float64) string {
+		if math.IsNaN(value) {
+			return "NaN"
+		}
+		d := int64(math.Floor(value))
+		sec := d % 60
+		d -= sec
+		d /= 60
+		min := d % 60
+		d -= min
+		d /= 60
+		h := d
+
+		return fmt.Sprintf("%02d:%02d:%.2f", h, min, float64(sec)+(value-math.Floor(value)))
 	}
 
 	funcMap["formatSize"] = func(value int64) string {

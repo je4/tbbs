@@ -26,7 +26,7 @@ require (
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inhies/go-bytesize v0.0.0-20210819104631-275770b98743
-	github.com/je4/bagarc/v2 v2.0.2
+	github.com/je4/bagarc/v2 v2.0.3
 	github.com/je4/goffmpeg v0.0.0-20210601140900-1f3c7266e3bc
 	github.com/je4/indexer v0.0.0-20210603180844-c22f48bafd8c
 	github.com/je4/sftp/v2 v2.0.0-20210629122637-38803c904394

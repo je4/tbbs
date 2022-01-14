@@ -18,7 +18,7 @@ Cleanup = false
 Checksum  = ["md5", "sha512"]
 
 #ingest only stuff
-ingestloc = "temp"
+ingestloc = "ingest"
 
 [tunnel.main]
     user = "root"

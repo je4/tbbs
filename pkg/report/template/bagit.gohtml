@@ -32,6 +32,11 @@
     </tr>
 </table>
 
+<h4>Bag-Info</h4>
+<pre>
+{{.BagInfo}}
+</pre>
+
 <h3>Ingest</h3>
 
 <table style="">
@@ -121,6 +126,9 @@
     <h3 style="overflow-wrap: anywhere;">{{$content.DiskPath}}</h3>
     <table style="margin-left: auto; margin-right: auto;">
         <tr>
+            <td class="border">ID</td><td class="border break">{{$content.ContentID}}</td>
+        </tr>
+        <tr>
             <td class="border">Diskpath</td><td class="border break">{{$content.DiskPath}}</td>
         </tr>
         <tr>
@@ -205,6 +213,81 @@
     </table>
 {{end}}
 
+    {{if (gt (len $content.Indexer.FFProbe.Streams) 0 )}}
+    {{$ffprobe := $content.Indexer.FFProbe}}
+        <h4>FFProbe</h4>
+
+    <table>
+        {{range $name,$vals := toMap $ffprobe}}
+            {{range $val := $vals}}
+                <tr>
+                    <td class="border">{{$name}}</td><td class="border break">{{$val}}</td>
+                </tr>
+            {{end}}
+        {{end}}
+    </table>
+
+{{/*
+        <div>
+            Input #0, {{$ffprobe.Format.FormatName}}, from '{{$ffprobe.Format.Filename}}'
+            <div class="tab">
+                Metadata:
+                <div class="tab">
+                    {{range $name, $val := $ffprobe.Format.Tags}}
+                        {{$name}}: {{$val}}<br />
+                    {{end}}
+                </div>
+                {{$bitrate := 0}}
+                {{$duration := float64 0}}
+                {{range $stream := $ffprobe.Streams}}
+                   {{$bitrate = add $bitrate (atoi $stream.BitRate)}}
+                    {{$d := atof $stream.Duration}}
+                    {{if gt $d $duration}}
+                        {{$duration = $d}}
+                    {{end}}
+                {{end}}
+                Duration: {{formatDuration $duration}}, bitrate: {{formatSize $bitrate }}/s
+                {{range $stream := $ffprobe.Streams}}
+                <div class="tab">
+                    Stream #0:{{$stream.Index}}:
+                    {{$stream.CodecType | title}}:
+                    {{$stream.CodecName}} ({{$stream.CodecTagString}} / {{$stream.CodecTag}})
+                    {{if (ne $stream.PixFmt "")}}{{$stream.PixFmt}} ({{$stream.DisplayAspectRatio}}){{end}}
+                    {{if (gt $stream.CodedWidth 0)}}{{$stream.CodedWidth}}x{{$stream.CodedHeight}}{{end}}
+                    {{formatSize (int64 (atoi $stream.BitRate))}}/s
+                    {{if (hasPrefix "1/" $stream.TimeBase)}}{{trimPrefix "1/" $stream.TimeBase}}Hz{{end}}
+                </div>
+                {{end}}
+            </div>
+        </div>
+*/}}
+    {{end}}
+
+    {{if (gt (len $content.Indexer.Identify) 0)}}
+        <h4>Image Magick</h4>
+
+        {{range $name0,$val0 := $content.Indexer.Identify}}
+        <b>{{$name0}}</b>
+        <table>
+            {{$count := 0}}
+            {{range $name,$val := $val0}}
+                {{$count = add1 $count}}
+                {{if (lt $count 40)}}
+                    <tr>
+                        <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                    </tr>
+                {{end}}
+                {{if (eq $count 40)}}
+                    <tr>
+                        <td class="border">...</td><td class="border">{{sub (len $val0) 39}} more entries</td>
+                    </tr>
+                {{end}}
+            {{end}}
+        </table>
+        {{end}}
+    {{end}}
+
+
     {{if (gt (len $content.Indexer.Exif) 0)}}
         <h4>EXIF</h4>
 
@@ -224,6 +307,30 @@
                 {{end}}
             {{end}}
         </table>
+    {{end}}
+
+    {{if (gt (len $content.Indexer.Tika) 0)}}
+        <h4>Tika (without EXIF data)</h4>
+        {{range $tika := $content.Indexer.Tika}}
+        <table>
+            {{$count := 0}}
+            {{range $name,$val := $tika}}
+                {{if (not (hasPrefix "Exif" $name))}}
+                    {{$count = add1 $count}}
+                    {{if (lt $count 26)}}
+                        <tr>
+                            <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                        </tr>
+                    {{end}}
+                    {{if (eq $count 26)}}
+                        <tr>
+                            <td class="border">...</td><td class="border">{{sub (len $content.Indexer.Exif) 25}} more entries</td>
+                        </tr>
+                    {{end}}
+                {{end}}
+            {{end}}
+        </table>
+        {{end}}
     {{end}}
 
 {{end}}

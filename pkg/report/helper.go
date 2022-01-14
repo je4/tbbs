@@ -1,6 +1,10 @@
 package report
 
-import "strconv"
+import (
+	"fmt"
+	"reflect"
+	"strconv"
+)
 
 // FormatInt formats an integer with grouping decimals, in decimal radix.
 // Grouping signs are inserted after every groupSize digits, starting from the right.
@@ -37,4 +41,46 @@ func FormatInt(n int64, groupSize int, grouping byte) string {
 			out[j] = grouping
 		}
 	}
+}
+
+func StructToMap(value interface{}) map[string][]interface{} {
+	m := make(map[string][]interface{})
+	relType := reflect.TypeOf(value)
+	item := reflect.ValueOf(value)
+	fmt.Printf("Type: %v", relType)
+	switch item.Kind() {
+	case reflect.Slice:
+		for i := 0; i < item.Len(); i++ {
+			vs := StructToMap(item.Index(i).Interface())
+			for name, vals := range vs {
+				m[fmt.Sprintf("%d.%s", i, name)] = vals
+			}
+		}
+	case reflect.Struct:
+		for i := 0; i < relType.NumField(); i++ {
+			ret := StructToMap(reflect.ValueOf(value).Field(i).Interface())
+			for key, vals := range ret {
+				name := relType.Field(i).Name
+				if key != "" {
+					name += "." + key
+				}
+				m[name] = []interface{}{}
+				for _, val := range vals {
+					m[name] = append(m[name], val)
+				}
+			}
+		}
+	default:
+		switch v := value.(type) {
+		case string:
+			if v != "" && v != "0/0" {
+				m[""] = []interface{}{v}
+			}
+		case int:
+			if v != 0 {
+				m[""] = []interface{}{v}
+			}
+		}
+	}
+	return m
 }

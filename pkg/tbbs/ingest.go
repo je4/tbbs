@@ -609,7 +609,7 @@ func (i *Ingest) Ingest() error {
 		metaWriter := bufio.NewWriter(&metaBytes)
 		var baginfoBytes bytes.Buffer
 		baginfoWriter := bufio.NewWriter(&baginfoBytes)
-		if err := checker.Check(metaWriter); err != nil {
+		if err := checker.Check(metaWriter, baginfoWriter); err != nil {
 			return errors.Wrapf(err, "error checking file %v", bagitPath)
 		}
 		// paranoia
