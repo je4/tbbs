@@ -1,0 +1,145 @@
+<html>{{ $this := . }}
+<head>
+    <title>TBBS - Report - {{.Name}}</title>
+
+    <link href="../static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css">
+    <link href="../static/font/inter/inter.css" rel="stylesheet" type="text/css">
+    <link href="../static/css/tbbs.css" rel="stylesheet" type="text/css">
+    <script src="../static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
+</head>
+<body>
+<h1>TBBS - The boring bagit store</h1>
+<h2 class="title">{{.Name}}</h2>
+
+{{$content := .Content}}
+<h3 style="overflow-wrap: anywhere;">{{$content.DiskPath}}</h3>
+<table style="margin-left: auto; margin-right: auto;">
+    <tr>
+        <td class="border">ID</td><td class="border break">{{$content.ContentID}}</td>
+    </tr>
+    <tr>
+        <td class="border">Diskpath</td><td class="border break">{{$content.DiskPath}}</td>
+    </tr>
+    <tr>
+        <td class="border">Zippath</td><td class="border break">{{$content.ZipPath}}</td>
+    </tr>
+    <tr>
+        <td class="border">Size</td><td class="border">{{formatSize $content.Filesize}} ({{formatInt64 $content.Filesize}} Byte)</td>
+    </tr>
+    {{range $name, $csum := $content.Checksums}}
+        <tr>
+            <td class="border">{{$name}}</td><td class="border break">{{$csum}}</td>
+        </tr>
+    {{end}}
+    <tr>
+        <td class="border">Mimetype</td><td class="border">{{$content.Mimetype}}</td>
+    </tr>
+    <tr>
+        <td class="border">Dimension</td><td class="border">{{if (gt $content.Width 0)}}{{$content.Width}}x{{$content.Height}}{{end}}{{if (gt $content.Duration 0)}} {{$content.Duration}}sec{{end}}</td>
+    </tr>
+</table>
+
+<h4>Siegfried</h4>
+<table>
+    {{range $val := $content.Indexer.Siegfried}}
+        <tr>
+            <td class="border">Pronom</td><td class="border">{{$val.ID}}</td>
+        </tr>
+        <tr>
+            <td class="border">Name</td><td class="border">{{$val.Name}}</td>
+        </tr>
+        <tr>
+            <td class="border">Mimetype</td><td class="border">{{$val.MIME}}</td>
+        </tr>
+        <tr>
+            <td class="border">Basis</td><td class="border">{{$val.Basis | join " // "}}</td>
+        </tr>
+    {{end}}
+</table>
+
+{{if (gt (len $content.Indexer.Clamav) 0)}}
+    <h4>Clamav</h4>
+
+    <table>
+        {{range $name,$val := $content.Indexer.Clamav}}
+            <tr>
+                <td class="border">{{$name}}</td><td class="border">{{$val}}</td>
+            </tr>
+        {{end}}
+    </table>
+{{end}}
+
+{{if (gt (len $content.Indexer.NSRL) 0)}}
+    <h4>NSRL</h4>
+
+    <table>
+        {{range $name,$vals := toMap $content.Indexer.NSRL}}
+            {{range $val := $vals}}
+                <tr>
+                    <td class="border">{{$name}}</td><td class="border break">{{$val}}</td>
+                </tr>
+            {{end}}
+        {{end}}
+    </table>
+{{end}}
+
+{{if (gt (len $content.Indexer.FFProbe.Streams) 0 )}}
+    {{$ffprobe := $content.Indexer.FFProbe}}
+    <h4>FFProbe</h4>
+
+    <table>
+        {{range $name,$vals := toMap $ffprobe}}
+            {{range $val := $vals}}
+                <tr>
+                    <td class="border">{{$name}}</td><td class="border break">{{$val}}</td>
+                </tr>
+            {{end}}
+        {{end}}
+    </table>
+{{end}}
+
+{{if (gt (len $content.Indexer.Identify) 0)}}
+    <h4>Image Magick</h4>
+
+    {{range $name0,$val0 := $content.Indexer.Identify}}
+        <b>{{$name0}}</b>
+        <table>
+            {{range $name,$val := $val0}}
+                <tr>
+                    <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                </tr>
+            {{end}}
+        </table>
+    {{end}}
+{{end}}
+
+
+{{if (gt (len $content.Indexer.Exif) 0)}}
+    <h4>EXIF</h4>
+
+    <table>
+        {{range $name,$val := $content.Indexer.Exif}}
+            <tr>
+                <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+            </tr>
+        {{end}}
+    </table>
+{{end}}
+
+{{if (gt (len $content.Indexer.Tika) 0)}}
+    <h4>Tika (without EXIF data)</h4>
+    {{range $tika := $content.Indexer.Tika}}
+        <table>
+            {{range $name,$val := $tika}}
+                {{if (not (hasPrefix "Exif" $name))}}
+                    <tr>
+                        <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                    </tr>
+                {{end}}
+            {{end}}
+        </table>
+    {{end}}
+{{end}}
+
+</body>
+</html>
