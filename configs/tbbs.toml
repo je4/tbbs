@@ -20,21 +20,21 @@ Checksum  = ["md5", "sha512"]
 #ingest only stuff
 ingestloc = "ingest"
 
-[tunnel.main]
+[xtunnel.main]
     user = "root"
     privatekey = "C:/daten/keys/putty_ed25519.priv.openssh"
-    [tunnel.main.endpoint]
+    [xtunnel.main.endpoint]
         port = 22
         host = "ba14ns21403.fhnw.ch"
-    [tunnel.main.forward.mysql.local]
+    [xtunnel.main.forward.mysql.local]
         port = 3308
         host = "localhost"
-    [tunnel.main.forward.mysql.remote]
+    [xtunnel.main.forward.mysql.remote]
         port = 3306
         host = "v000306.adm.ds.fhnw.ch"
 
 [db]
     #[username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
-    dsn = "tbbs:hcpOLPk64DtgNXLR@tcp(localhost:3308)/tbbs?parseTime=true"
+    dsn = "tbbs:hcpOLPk64DtgNXLR@tcp(localhost:3306)/tbbs?parseTime=true"
     connMaxTimeout = "4h"
     schema = "tbbs"

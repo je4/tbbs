@@ -22,7 +22,15 @@ func (s *Server) overviewHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	tpl := s.templates["overview.gohtml"]
-	if err := tpl.Execute(w, overview); err != nil {
+	if err := tpl.Execute(w, struct {
+		Institution, Logo string
+		Overview          *Overview
+	}{
+		Institution: s.institution,
+		Logo:        s.logo,
+		Overview:    overview,
+	}); err != nil {
+
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Header().Set("Content-type", "text/plain")
 		w.Write([]byte(fmt.Sprintf("error executing template %s : %v", "overview.gohtml", err)))

@@ -47,7 +47,7 @@ func StructToMap(value interface{}) map[string][]interface{} {
 	m := make(map[string][]interface{})
 	relType := reflect.TypeOf(value)
 	item := reflect.ValueOf(value)
-	fmt.Printf("Type: %v", relType)
+	//fmt.Printf("Type: %v", relType)
 	switch item.Kind() {
 	case reflect.Slice:
 		for i := 0; i < item.Len(); i++ {
@@ -56,9 +56,23 @@ func StructToMap(value interface{}) map[string][]interface{} {
 				m[fmt.Sprintf("%d.%s", i, name)] = vals
 			}
 		}
+	case reflect.Map:
+		for _, k := range item.MapKeys() {
+			ret := StructToMap(item.MapIndex(k).Interface())
+			name := k.String()
+			for key, vals := range ret {
+				if key != "" {
+					name += "." + key
+				}
+				m[name] = []interface{}{}
+				for _, val := range vals {
+					m[name] = append(m[name], val)
+				}
+			}
+		}
 	case reflect.Struct:
 		for i := 0; i < relType.NumField(); i++ {
-			ret := StructToMap(reflect.ValueOf(value).Field(i).Interface())
+			ret := StructToMap(item.Field(i).Interface())
 			for key, vals := range ret {
 				name := relType.Field(i).Name
 				if key != "" {

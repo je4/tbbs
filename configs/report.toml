@@ -7,6 +7,8 @@
 #password = "samantha"
 templatedir = "./pkg/report/template"
 staticdir = "./pkg/report/static"
+logo = "http://localhost/static/img/hek.svg"
+institution = "HEK - Haus der elektronischen Künste, Basel"
 
 [db]
     #[username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]

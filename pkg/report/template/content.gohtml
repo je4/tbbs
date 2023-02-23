@@ -1,18 +1,19 @@
 <html>{{ $this := . }}
 <head>
-    <title>TBBS - Report - {{.Name}}</title>
+    <title>TBBS - Report - {{abbrRight 30 .Content.DiskPath}}</title>
 
-    <link href="../static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css">
-    <link href="../static/font/inter/inter.css" rel="stylesheet" type="text/css">
-    <link href="../static/css/tbbs.css" rel="stylesheet" type="text/css">
-    <script src="../static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
+    <link href="../../static/thirdparty/pagedjs/css/interface.css" rel="stylesheet" type="text/css">
+    <link href="../../static/font/inter/inter.css" rel="stylesheet" type="text/css">
+    <link href="../../static/css/tbbs.css" rel="stylesheet" type="text/css">
+    <script src="../../static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
 </head>
 <body>
-<h1>TBBS - The boring bagit store</h1>
-<h2 class="title">{{.Name}}</h2>
+<span class="date" style="visibility:hidden;">{{now | date "2006-01-02 15:04:05"}}</span>
 
+<h1 class="title"><img src="{{.Logo}}" style="width: 50px;">&nbsp;&nbsp;{{.Institution}}</h1>
 {{$content := .Content}}
-<h3 style="overflow-wrap: anywhere;">{{$content.DiskPath}}</h3>
+<span class="subtitle" style="visibility: hidden;">{{abbrRight 35 .Content.DiskPath}}</span>
+<h2 class="" style="overflow-wrap: anywhere;">{{$content.DiskPath}}</h2>
 <table style="margin-left: auto; margin-right: auto;">
     <tr>
         <td class="border">ID</td><td class="border break">{{$content.ContentID}}</td>
@@ -106,7 +107,7 @@
         <table>
             {{range $name,$val := $val0}}
                 <tr>
-                    <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                    <td class="border">{{$name}}</td><td class="border break">{{printf "%v" $val}}</td>
                 </tr>
             {{end}}
         </table>
@@ -120,7 +121,7 @@
     <table>
         {{range $name,$val := $content.Indexer.Exif}}
             <tr>
-                <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                <td class="border">{{$name}}</td><td class="border break">{{printf "%v" $val}}</td>
             </tr>
         {{end}}
     </table>
@@ -133,7 +134,7 @@
             {{range $name,$val := $tika}}
                 {{if (not (hasPrefix "Exif" $name))}}
                     <tr>
-                        <td class="border">{{$name}}</td><td class="border">{{abbrev 100 (printf "%v" $val)}}</td>
+                        <td class="border">{{$name}}</td><td class="border break">{{printf "%v" $val}}</td>
                     </tr>
                 {{end}}
             {{end}}

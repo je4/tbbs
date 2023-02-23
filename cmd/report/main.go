@@ -159,6 +159,8 @@ func main() {
 		stats,
 		staticFS,
 		templateFS,
+		config.Logo,
+		config.Institution,
 		*dev,
 	)
 	if err != nil {

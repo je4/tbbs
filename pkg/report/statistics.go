@@ -137,12 +137,13 @@ func (stat *Statistics) getHealth(bagitID int64) (quality float64, err error) {
 }
 
 type OverviewBagit struct {
-	BagitID  int64
-	Size     int64
-	Files    int64
-	Name     string
-	HealthOK bool
-	Quality  float64
+	BagitID            int64
+	Size               int64
+	Files              int64
+	Name               string
+	HealthOK           bool
+	Quality            float64
+	SHA512, SHA512_AES string
 }
 
 type Overview struct {
@@ -158,7 +159,7 @@ func (stat *Statistics) Overview() (*Overview, error) {
 		Bagits: []*OverviewBagit{},
 	}
 
-	sqlstr := fmt.Sprintf("SELECT b.bagitid, b.name, SUM(c.filesize) AS filesize, COUNT(c.contentid) AS files "+
+	sqlstr := fmt.Sprintf("SELECT b.bagitid, b.name, b.sha512, b.sha512_aes, SUM(c.filesize) AS filesize, COUNT(c.contentid) AS files "+
 		" FROM %s.bagit b, %s.content c "+
 		" WHERE b.bagitid = c.bagitid GROUP BY b.bagitid", stat.schema, stat.schema)
 	rows, err := stat.db.Query(sqlstr)
@@ -167,7 +168,7 @@ func (stat *Statistics) Overview() (*Overview, error) {
 	}
 	for rows.Next() {
 		var bo = &OverviewBagit{}
-		if err := rows.Scan(&bo.BagitID, &bo.Name, &bo.Size, &bo.Files); err != nil {
+		if err := rows.Scan(&bo.BagitID, &bo.Name, &bo.SHA512, &bo.SHA512_AES, &bo.Size, &bo.Files); err != nil {
 			rows.Close()
 			return nil, errors.Wrapf(err, "cannot scan result of query %s", sqlstr)
 		}
@@ -230,6 +231,7 @@ type BagitOverviewMime struct {
 }
 
 type BagitOverview struct {
+	BagitID            int64
 	Name               string
 	Size               int64
 	Creator            string
@@ -272,10 +274,10 @@ func (stat *Statistics) BagitOverview(id int64) (*BagitOverview, error) {
 	}
 
 	var creationDate = sql.NullTime{}
-	sqlstr := fmt.Sprintf("SELECT name, baginfo, filesize, sha512, sha512_aes, creator, creationdate"+
+	sqlstr := fmt.Sprintf("SELECT name, bagitid, baginfo, filesize, sha512, sha512_aes, creator, creationdate"+
 		" FROM %s.bagit WHERE bagitid=?", stat.schema)
 	row := stat.db.QueryRow(sqlstr, id)
-	if err := row.Scan(&bo.Name, &bo.BagInfo, &bo.Size, &bo.SHA512, &bo.SHA512_AES, &bo.Creator, &creationDate); err != nil {
+	if err := row.Scan(&bo.Name, &bo.BagitID, &bo.BagInfo, &bo.Size, &bo.SHA512, &bo.SHA512_AES, &bo.Creator, &creationDate); err != nil {
 		return nil, errors.Wrapf(err, "cannot execute query %s", sqlstr)
 	}
 	bo.CreationDate = creationDate.Time

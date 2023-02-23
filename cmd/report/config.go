@@ -58,6 +58,8 @@ type Config struct {
 	DB          DBMySQL              `toml:"db"`
 	TemplateDir string               `toml:"templatedir"`
 	StaticDir   string               `toml:"staticdir"`
+	Logo        string               `toml:"logo"`
+	Institution string               `toml:"institution"`
 }
 
 func LoadConfig(fp string, conf *Config) error {

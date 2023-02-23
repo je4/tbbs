@@ -550,6 +550,9 @@ func (i *Ingest) Ingest() error {
 	} else {
 		fp = "/" + fp
 	}
+	if _, err := os.Stat(fp); err != nil {
+		return errors.Wrapf(err, "cannot stat %s", fp)
+	}
 	// walk through the path
 	if err := filepath.Walk(fp, func(path string, info fs.FileInfo, err error) error {
 		// ignore directory

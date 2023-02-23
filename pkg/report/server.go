@@ -23,28 +23,30 @@ import (
 )
 
 type Server struct {
-	service          string
-	host, port       string
-	name, password   string
-	srv              *http.Server
-	linkTokenExp     time.Duration
-	jwtKey           string
-	jwtAlg           []string
-	log              *logging.Logger
-	AddrExt          string
-	accessLog        io.Writer
-	templates        map[string]*template.Template
-	httpStaticServer http.Handler
-	staticFS         fs.FS
-	stats            *Statistics
-	dev              bool
-	templateFS       fs.FS
+	service           string
+	host, port        string
+	name, password    string
+	srv               *http.Server
+	linkTokenExp      time.Duration
+	jwtKey            string
+	jwtAlg            []string
+	log               *logging.Logger
+	AddrExt           string
+	accessLog         io.Writer
+	templates         map[string]*template.Template
+	httpStaticServer  http.Handler
+	staticFS          fs.FS
+	stats             *Statistics
+	dev               bool
+	templateFS        fs.FS
+	logo, institution string
 }
 
 func NewServer(service, addr, addrExt, name, password string,
 	log *logging.Logger, accessLog io.Writer,
 	stats *Statistics,
 	staticFS, templateFS fs.FS,
+	logo, institution string,
 	dev bool) (*Server, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -58,19 +60,21 @@ func NewServer(service, addr, addrExt, name, password string,
 	*/
 
 	srv := &Server{
-		service:    service,
-		host:       host,
-		port:       port,
-		AddrExt:    strings.TrimRight(addrExt, "/"),
-		name:       name,
-		password:   password,
-		log:        log,
-		accessLog:  accessLog,
-		templates:  map[string]*template.Template{},
-		stats:      stats,
-		staticFS:   staticFS,
-		templateFS: templateFS,
-		dev:        dev,
+		service:     service,
+		host:        host,
+		port:        port,
+		AddrExt:     strings.TrimRight(addrExt, "/"),
+		name:        name,
+		password:    password,
+		log:         log,
+		accessLog:   accessLog,
+		templates:   map[string]*template.Template{},
+		stats:       stats,
+		staticFS:    staticFS,
+		templateFS:  templateFS,
+		logo:        logo,
+		institution: institution,
+		dev:         dev,
 	}
 	srv.httpStaticServer = http.FileServer(http.FS(srv.staticFS))
 
@@ -135,6 +139,14 @@ func (s *Server) InitTemplates() error {
 		}
 		return bs.Format("%.0f", "byte", false)
 	}
+
+	funcMap["abbrRight"] = func(l int, str string) string {
+		if len(str) <= l {
+			return str
+		}
+		runes := []rune(str)
+		return "..." + string(runes[len(runes)-l:])
+	}
 	entries, err := fs.ReadDir(s.templateFS, ".")
 	//entries, err := templateFS.ReadDir("template")
 	if err != nil {
@@ -163,6 +175,7 @@ func (s *Server) ListenAndServe(cert, key string) (err error) {
 
 	router.HandleFunc("/", s.overviewHandler)
 	router.HandleFunc("/bagit/{bagitid}", s.bagitHandler)
+	router.HandleFunc("/bagit/{bagitid}/{contentid}", s.contentHandler)
 
 	loggedRouter := handlers.CombinedLoggingHandler(s.accessLog, handlers.ProxyHeaders(router))
 	addr := net.JoinHostPort(s.host, s.port)

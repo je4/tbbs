@@ -8,18 +8,21 @@
 @media print {
     @page {
         @bottom-center {
-            content: counter(page) "/" counter(pages);
+            content: counter(page) "/" counter(pages) " - " string(date);
         }
         @top-center {
             content: string(title) " - " string(subtitle);
         }
     }
 
-    h2 {
+    .title {
         string-set: title content(text);
     }
-    h3 {
+    .subtitle {
         string-set: subtitle content(text);
+    }
+    .date {
+        string-set: date content(text);
     }
 
     h3 {
@@ -36,7 +39,7 @@ td {
     border-bottom: 1px solid black;
 }
 
-td.break {
+.break {
     overflow-wrap: anywhere;
 }
 

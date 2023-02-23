@@ -8,31 +8,32 @@
     <script src="static/thirdparty/pagedjs/js/paged.polyfill.js"></script>
 </head>
 <body>
-<h1>TBBS - The boring bagit store</h1>
-<h2>Overview - Total</h2>
-<table style="margin-left: auto; margin-right: auto;">
+<span class="date" style="visibility:hidden;">{{now | date "2006-01-02 15:04:05"}}</span>
+<h1 class="title"><img src="{{.Logo}}" style="width: 50px;">&nbsp;&nbsp;{{.Institution}}</h1>
+<h2 class="subtitle">TBBS - The boring bagit store - Overview</h2>
+<table style="">
     <tr>
-        <td>Size</td><td class="right">{{formatSize .Size}}</td>
+        <td>Size</td><td class="right">{{formatSize .Overview.Size}}</td>
     </tr>
     <tr>
-        <td>Files</td><td class="right">{{formatInt64 .Files}}</td>
+        <td>Files</td><td class="right">{{formatInt64 .Overview.Files}}</td>
     </tr>
     <tr>
-        <td>Bagits</td><td class="right">{{len .Bagits}}</td>
+        <td>Bagits</td><td class="right">{{len .Overview.Bagits}}</td>
     </tr>
     <tr>
-        <td>Health</td><td>Passed: {{.HealthOK}} // Failed: {{.HealthFailed}}</td>
+        <td>Health</td><td>Passed: {{.Overview.HealthOK}} // Failed: {{.Overview.HealthFailed}}</td>
     </tr>
 </table>
 <h2>Overview Bagits</h2>
-<table style="margin-left: auto; margin-right: auto;">
+<table style="">
     <tr>
         <th class="border head">Name</th>
         <th class="border head">Size</th>
         <th class="border head">Files</th>
         <th class="border head">Health</th>
     </tr>
-    {{range $bagit := .Bagits}}
+    {{range $bagit := .Overview.Bagits}}
         <tr>
             <td class="border"><a href="bagit/{{$bagit.BagitID}}">{{$bagit.Name}}</a></td>
             <td class="right border">{{formatSize $bagit.Size}}</td>
@@ -41,5 +42,17 @@
         </tr>
     {{end}}
 </table>
+
+<h2>Checksums</h2>
+{{range $bagit := .Overview.Bagits}}
+        <span style="font-weight: bold;">#{{$bagit.BagitID}} - {{$bagit.Name}}</span><br />
+        <span style="font-weight: bold;">SHA512</span><br />
+        <div class="break" style="font-family: 'Courier New', monospace; font-size: 12px;">{{$bagit.SHA512}}</div>
+        {{if (ne $bagit.SHA512_AES "")}}<span style="font-weight: bold;">SHA512 encrypted</span><br />
+        <div class="break" style="font-family: 'Courier New', monospace; font-size: 12px;">{{$bagit.SHA512_AES}}</div>
+        {{end}}<p>
+            &nbsp;
+        </p>
+{{end}}
 </body>
 </html>
